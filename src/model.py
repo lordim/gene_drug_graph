@@ -28,7 +28,7 @@ class GTN(torch.nn.Module):
 
     def forward(self, x: Tensor, edge_index: Tensor) -> Tensor:
         x = self.conv1(x, edge_index)
-        x = F.relu(x)
+        x = F.leaky_relu(x)
         x = self.conv2(x, edge_index)
         return x
 
@@ -46,7 +46,7 @@ class Classifier(torch.nn.Module):
         # Apply dot-product to get a prediction per supervision edge:
         return (edge_feat_source * edge_feat_target).sum(dim=-1)
 
-#------------------------- OUR MODELS HERE -------------------------
+#------------------------- Transformer MODELS HERE -------------------------
 
 class GraphTransformer_Embs(torch.nn.Module):
     def __init__(self, hidden_channels, num_source_nodes, num_target_nodes, data):
@@ -98,7 +98,7 @@ class GraphTransformer_CP(GraphTransformer_Embs):
                 num_source_nodes, source_size, _weight=src_weights, _freeze=True
             ),
             torch.nn.Linear(source_size, hidden_channels),
-            torch.nn.ReLU(),
+            torch.nn.LeakyReLU(),
         )
 
         self.target_emb = torch.nn.Sequential(
@@ -106,8 +106,34 @@ class GraphTransformer_CP(GraphTransformer_Embs):
                 num_target_nodes, target_size, _weight=tgt_weights, _freeze=True
             ),
             torch.nn.Linear(target_size, hidden_channels),
-            torch.nn.ReLU(),
+            torch.nn.LeakyReLU(),
         )
+
+# Child of our GTN model that initializes embedding weights with
+# our own features: ADMET feature for source, CURRENTLY random for target
+class GraphTransformer_OurFeat(GraphTransformer_Embs):
+    def __init__(self, hidden_channels, num_source_nodes, num_target_nodes, data):
+        super().__init__(hidden_channels, num_source_nodes, num_target_nodes, data)
+        src_weights = data["source"].x
+        # tgt_weights = data["target"].x
+        source_size = data["source"].x.shape[1]
+        # target_size = data["target"].x.shape[1]
+
+        self.source_emb = torch.nn.Sequential(
+            torch.nn.Embedding(
+                num_source_nodes, source_size, _weight=src_weights, _freeze=True
+            ),
+            torch.nn.Linear(source_size, hidden_channels),
+            torch.nn.LeakyReLU(),
+        )
+
+        # self.target_emb = torch.nn.Sequential(
+        #     torch.nn.Embedding(
+        #         num_target_nodes, target_size, _weight=tgt_weights, _freeze=True
+        #     ),
+        #     torch.nn.Linear(target_size, hidden_channels),
+        #     torch.nn.ReLU(),
+        # )
 
 #-------------------------------------------------------------------
 
@@ -162,7 +188,7 @@ class GraphSAGE_CP(GraphSAGE_Embs):
                 num_source_nodes, source_size, _weight=src_weights, _freeze=True
             ),
             torch.nn.Linear(source_size, hidden_channels),
-            torch.nn.ReLU(),
+            torch.nn.LeakyReLU(),
         )
 
         self.target_emb = torch.nn.Sequential(
@@ -170,7 +196,7 @@ class GraphSAGE_CP(GraphSAGE_Embs):
                 num_target_nodes, target_size, _weight=tgt_weights, _freeze=True
             ),
             torch.nn.Linear(target_size, hidden_channels),
-            torch.nn.ReLU(),
+            torch.nn.LeakyReLU(),
         )
 
 # Child of our GNN model that initializes embedding weights with
@@ -188,7 +214,7 @@ class GraphSAGE_OurFeat(GraphSAGE_Embs):
                 num_source_nodes, source_size, _weight=src_weights, _freeze=True
             ),
             torch.nn.Linear(source_size, hidden_channels),
-            torch.nn.ReLU(),
+            torch.nn.LeakyReLU(),
         )
 
         # self.target_emb = torch.nn.Sequential(
@@ -213,8 +239,8 @@ class MLP(torch.nn.Module):
         target_ix = data["binds"]["edge_label_index"][1]
         x_source = data["source"].x[source_ix]
         x_target = data["target"].x[target_ix]
-        h_source = F.relu(self.dense_source(x_source))
-        h_target = F.relu(self.dense_target(x_target))
+        h_source = F.leaky_relu(self.dense_source(x_source))
+        h_target = F.leaky_relu(self.dense_target(x_target))
         logits = self.bilinear(h_source, h_target)
         return torch.squeeze(logits)
 
