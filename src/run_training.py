@@ -5,7 +5,7 @@ import torch
 
 from motive import get_counts, get_loaders
 from model import GraphSAGE_CP, GraphSAGE_Embs, MLP, Bilinear
-from model import GraphTransformer_Embs, GraphTransformer_CP
+from model import GraphTransformer_Embs, GraphTransformer_CP, GraphSAGE_OurFeat
 # from train import DEVICE, train_loop
 from train import train_loop
 from utils.evaluate import save_metrics
@@ -37,8 +37,19 @@ def workflow(locator, num_epochs, tgt_type, graph_type, input_root_dir):
                 num_targets,
                 train_loader.loader.data,
             )
+        
+        elif initialization == "ourfeat":
+            model = GraphSAGE_OurFeat(
+                int(locator.config["hidden_channels"]),
+                num_sources,
+                num_targets,
+                train_loader.loader.data,
+            )
+
+        else:
+            raise NotImplementedError(f"Initialization {initialization} not supported for GNN.")
     
-    if model_name == "gtn":
+    elif model_name == "gtn":
         initialization = locator.config["initialization"]
         if initialization == "cp":
             model = GraphTransformer_CP(

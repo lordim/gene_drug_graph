@@ -228,7 +228,7 @@ def load_graph_helper(leave_out: str, tgt_type: str, graph_type: str, input_root
 
     if graph_type == "bipartite":
         paths = [
-            os.path.join(input_root_dir, f"{graph_type}/{tgt_type}/source.parquet"),
+            os.path.join(input_root_dir, f"{graph_type}/{tgt_type}/source_admet.parquet"),
             os.path.join(input_root_dir, f"{graph_type}/{tgt_type}/target.parquet"),
             os.path.join(input_root_dir, f"{graph_type}/{tgt_type}/{leave_out}/s_t_labels.parquet"),
             # f"data/{graph_type}/{tgt_type}/source.parquet",
@@ -241,7 +241,7 @@ def load_graph_helper(leave_out: str, tgt_type: str, graph_type: str, input_root
 
     else:
         paths = [
-            os.path.join(input_root_dir, f"{graph_type}/{tgt_type}/source.parquet"),
+            os.path.join(input_root_dir, f"{graph_type}/{tgt_type}/source_admet.parquet"),
             os.path.join(input_root_dir, f"{graph_type}/{tgt_type}/target.parquet"),
             # f"data/{graph_type}/{tgt_type}/source.parquet",
             # f"data/{graph_type}/{tgt_type}/target.parquet",

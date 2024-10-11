@@ -111,8 +111,6 @@ class GraphTransformer_CP(GraphTransformer_Embs):
 
 #-------------------------------------------------------------------
 
-
-
 class GraphSAGE_Embs(torch.nn.Module):
     def __init__(self, hidden_channels, num_source_nodes, num_target_nodes, data):
         super().__init__()
@@ -175,6 +173,31 @@ class GraphSAGE_CP(GraphSAGE_Embs):
             torch.nn.ReLU(),
         )
 
+# Child of our GNN model that initializes embedding weights with
+# our own features: ADMET feature for source, CURRENTLY random for target
+class GraphSAGE_OurFeat(GraphSAGE_Embs):
+    def __init__(self, hidden_channels, num_source_nodes, num_target_nodes, data):
+        super().__init__(hidden_channels, num_source_nodes, num_target_nodes, data)
+        src_weights = data["source"].x
+        # tgt_weights = data["target"].x
+        source_size = data["source"].x.shape[1]
+        # target_size = data["target"].x.shape[1]
+
+        self.source_emb = torch.nn.Sequential(
+            torch.nn.Embedding(
+                num_source_nodes, source_size, _weight=src_weights, _freeze=True
+            ),
+            torch.nn.Linear(source_size, hidden_channels),
+            torch.nn.ReLU(),
+        )
+
+        # self.target_emb = torch.nn.Sequential(
+        #     torch.nn.Embedding(
+        #         num_target_nodes, target_size, _weight=tgt_weights, _freeze=True
+        #     ),
+        #     torch.nn.Linear(target_size, hidden_channels),
+        #     torch.nn.ReLU(),
+        # )
 
 class MLP(torch.nn.Module):
     def __init__(self, source_size, target_size, hidden_size):
