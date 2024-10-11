@@ -3,21 +3,26 @@ import torch.nn.functional as F
 from torch.utils.tensorboard.writer import SummaryWriter
 from tqdm.autonotebook import tqdm
 import pandas as pd
+import os
 from utils.evaluate import Evaluator, get_best_th, save_metrics
 
 #TODO: change setting so that device can be set at start of training
-DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+# DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 SEED = 2024313
 
 
 def run_update(model, optimizer, data):
+    dev = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if torch.cuda.is_available() else "cpu")
+    
     optimizer.zero_grad()
 
-    data.to(DEVICE)
+    data.to(dev)
+    # data.to(DEVICE)
     logits = model(data)
     ground_truth = data["binds"].edge_label
     unique_mapping = (ground_truth * 2 + (logits > 0)).to(torch.long)
-    counts = torch.bincount(unique_mapping, minlength=4).reshape(2, 2).to(DEVICE)
+    counts = torch.bincount(unique_mapping, minlength=4).reshape(2, 2).to(dev)
+    # counts = torch.bincount(unique_mapping, minlength=4).reshape(2, 2).to(DEVICE)
     loss = F.binary_cross_entropy_with_logits(logits, ground_truth)
     loss.backward()
     optimizer.step()
@@ -27,8 +32,10 @@ def run_update(model, optimizer, data):
 
 
 def run_train_epoch(model, train_loader, optimizer, writer, epoch):
+    dev = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if torch.cuda.is_available() else "cpu")
+
     total_loss = total_examples = 0
-    cm_counts = torch.zeros((2, 2), dtype=torch.long).to(DEVICE)
+    cm_counts = torch.zeros((2, 2), dtype=torch.long).to(dev)
     for sampled_data in tqdm(train_loader, leave=False, disable=True):
         counts, loss_value, num_examples = run_update(model, optimizer, sampled_data)
         cm_counts += counts
@@ -40,11 +47,13 @@ def run_train_epoch(model, train_loader, optimizer, writer, epoch):
 
 
 def run_eval_epoch(model, val_loader, writer, epoch):
+    dev = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if torch.cuda.is_available() else "cpu")
+
     logits = []
     ground_truth = []
     with torch.no_grad():
         for sampled_data in val_loader:
-            sampled_data.to(DEVICE)
+            sampled_data.to(dev)
             logits.append(model(sampled_data))
             ground_truth.append(sampled_data["binds"].edge_label)
         logits = torch.cat(logits, dim=0)
@@ -62,13 +71,15 @@ def run_eval_epoch(model, val_loader, writer, epoch):
 
 
 def run_test(model, test_loader, best_th, writer):
+    dev = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if torch.cuda.is_available() else "cpu")
+
     logits = []
     ground_truth = []
     src_ids = []
     tgt_ids = []
     with torch.no_grad():
         for sampled_data in test_loader:
-            sampled_data.to(DEVICE)
+            sampled_data.to(dev)
             logits.append(model(sampled_data))
             ground_truth.append(sampled_data["binds"].edge_label)
 

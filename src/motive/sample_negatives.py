@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import os
 import torch
 from torch_geometric.data import HeteroData
 from torch_geometric.transforms import BaseTransform
@@ -7,7 +8,7 @@ from torch_geometric.transforms import BaseTransform
 SEED = 2024319
 
 #TODO: change setting so that device can be set at start of training
-DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+# DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class SampleNegatives(BaseTransform):
@@ -15,6 +16,8 @@ class SampleNegatives(BaseTransform):
         self.edges = edges
         self.datasplit = datasplit
         self.ratio = ratio
+
+        self.device = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if torch.cuda.is_available() else "cpu")
 
     def forward(self, data: HeteroData):
         num_pos = len(data["binds"].edge_label)
@@ -103,7 +106,7 @@ class SampleNegatives(BaseTransform):
                 data["binds"].edge_label.cpu(),
                 torch.Tensor(np.zeros(num_pos * self.ratio)),
             )
-        ).to(DEVICE)
+        ).to(self.device)#.to(DEVICE)
         new_edges = (
             torch.cat(
                 (
@@ -113,7 +116,7 @@ class SampleNegatives(BaseTransform):
                 axis=1,
             )
             .type(torch.int32)
-            .to(DEVICE)
+            .to(self.device)#.to(DEVICE)
         )
 
         data["binds"].edge_label = new_labels

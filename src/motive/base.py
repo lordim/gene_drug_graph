@@ -9,7 +9,7 @@ from torch_geometric.loader import LinkNeighborLoader, PrefetchLoader
 from .sample_negatives import SampleNegatives
 
 #TODO: change setting so that device can be set at start of training
-DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+# DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def get_counts(data: HeteroData) -> tuple[int, int, dict]:
@@ -153,13 +153,16 @@ def load_bipartite_graph(
     message: list[str],
     supervision: list[str],
 ) -> HeteroData:
+
+    dev = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if torch.cuda.is_available() else "cpu")
+
     data = load_node_features(source_path, target_path)
     msgs, sups = load_bipartite_edges(labels_path, message, supervision)
     edge_label = torch.ones(sups.shape[1], dtype=torch.float)
     data["source", "binds", "target"].edge_index = msgs
     data["source", "binds", "target"].edge_label_index = sups
     data["source", "binds", "target"].edge_label = edge_label
-    data = T.ToUndirected()(data).to(DEVICE, non_blocking=True)
+    data = T.ToUndirected()(data).to(dev, non_blocking=True)
 
     return data
 
@@ -174,6 +177,9 @@ def load_graph(
     supervision: list[str],
     graph_type: str,
 ) -> HeteroData:
+
+    dev = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if torch.cuda.is_available() else "cpu")
+
     data = load_node_features(source_path, target_path)
 
     if graph_type == "s_expanded":
@@ -204,7 +210,7 @@ def load_graph(
     data["source", "binds", "target"].edge_label_index = sups
     data["source", "binds", "target"].edge_label = edge_label
 
-    data = T.ToUndirected()(data).to(DEVICE, non_blocking=True)
+    data = T.ToUndirected()(data).to(dev, non_blocking=True)
 
     return data
 
@@ -253,6 +259,9 @@ def load_graph_helper(leave_out: str, tgt_type: str, graph_type: str, input_root
 
 
 def get_loader(data: HeteroData, edges, leave_out, type: str) -> LinkNeighborLoader:
+
+    dev = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if torch.cuda.is_available() else "cpu")
+
     # edges = list(torch.Tensor(edges).to(torch.int32))
     edge_label_index = data["source", "binds", "target"].edge_label_index
     edge_label = data["source", "binds", "target"].edge_label
@@ -281,7 +290,7 @@ def get_loader(data: HeteroData, edges, leave_out, type: str) -> LinkNeighborLoa
         shuffle=shuffle,
         filter_per_worker=True,
     )
-    return PrefetchLoader(loader=data_loader, device=DEVICE)
+    return PrefetchLoader(loader=data_loader, device=dev)
 
 
 def get_loaders(
