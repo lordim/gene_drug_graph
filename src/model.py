@@ -2,7 +2,7 @@ import torch
 from torch import Tensor
 from torch.nn import functional as F
 from torch_geometric.data import HeteroData
-from torch_geometric.nn import SAGEConv, to_hetero, TransformerConv
+from torch_geometric.nn import SAGEConv, to_hetero, TransformerConv, GATv2Conv
 
 
 class GNN(torch.nn.Module):
@@ -32,6 +32,19 @@ class GTN(torch.nn.Module):
         x = self.conv2(x, edge_index)
         return x
 
+class GAT(torch.nn.Module):
+    def __init__(self, hidden_channels, num_heads=4):
+        super().__init__()
+
+        self.conv1 = GATv2Conv(hidden_channels, hidden_channels, heads=num_heads, add_self_loops=False, concat=False)
+        self.conv2 = GATv2Conv(hidden_channels, hidden_channels, heads=num_heads, add_self_loops=False, concat=False)
+
+    def forward(self, x: Tensor, edge_index: Tensor) -> Tensor:
+        x = self.conv1(x, edge_index)
+        x = F.leaky_relu(x)
+        x = self.conv2(x, edge_index)
+        return x
+
 
 # Our final classifier applies the dot-product between source and destination
 # node embeddings to derive edge-level predictions:
@@ -45,6 +58,69 @@ class Classifier(torch.nn.Module):
 
         # Apply dot-product to get a prediction per supervision edge:
         return (edge_feat_source * edge_feat_target).sum(dim=-1)
+
+#------------------------- GAT MODELS HERE ----------------------------
+class GraphAttention_Embs(torch.nn.Module):
+    def __init__(self, hidden_channels, num_source_nodes, num_target_nodes, data):
+        super().__init__()
+
+        # embedding matrices for sources and targets:
+        self.source_emb = torch.nn.Embedding(num_source_nodes, hidden_channels)
+        self.target_emb = torch.nn.Embedding(num_target_nodes, hidden_channels)
+
+        # Instantiate homogeneous GNN:
+        self.gat = GAT(hidden_channels)
+
+        # Convert GNN model into a heterogeneous variant:
+        metadata = data.metadata()
+        self.gat = to_hetero(self.gat, metadata=metadata)
+
+        # Instantiate one of the classifier classes
+        self.classifier = Classifier()
+
+    def forward(self, data: HeteroData) -> Tensor:
+        x_dict = {
+            "source": self.source_emb(data["source"].node_id),
+            "target": self.target_emb(data["target"].node_id),
+        }
+
+        # `x_dict` holds feature matrices of all node types
+        # `edge_index_dict` holds all edge indices of all edge types
+        x_dict = self.gat(x_dict, data.edge_index_dict)
+
+        pred = self.classifier(
+            x_dict["source"],
+            x_dict["target"],
+            data["source", "binds", "target"].edge_label_index,
+        )
+        return pred
+
+# Child of our GAT model that initializes embedding weights with
+# our own features: ADMET feature for source, CURRENTLY random for target
+class GraphAttention_OurFeat(GraphAttention_Embs):
+    def __init__(self, hidden_channels, num_source_nodes, num_target_nodes, data):
+        super().__init__(hidden_channels, num_source_nodes, num_target_nodes, data)
+        src_weights = data["source"].x
+        # tgt_weights = data["target"].x
+        source_size = data["source"].x.shape[1]
+        # target_size = data["target"].x.shape[1]
+
+        self.source_emb = torch.nn.Sequential(
+            torch.nn.Embedding(
+                num_source_nodes, source_size, _weight=src_weights, _freeze=True
+            ),
+            torch.nn.Linear(source_size, hidden_channels),
+            torch.nn.LeakyReLU(),
+        )
+
+        # self.target_emb = torch.nn.Sequential(
+        #     torch.nn.Embedding(
+        #         num_target_nodes, target_size, _weight=tgt_weights, _freeze=True
+        #     ),
+        #     torch.nn.Linear(target_size, hidden_channels),
+        #     torch.nn.ReLU(),
+        # )
+
 
 #------------------------- Transformer MODELS HERE -------------------------
 
