@@ -6,7 +6,7 @@ import torch
 from motive import get_counts, get_loaders
 from model import GraphSAGE_CP, GraphSAGE_Embs, MLP, Bilinear
 from model import GraphTransformer_Embs, GraphTransformer_CP, GraphSAGE_OurFeat, GraphTransformer_OurFeat
-from model import GraphAttention_OurFeat
+from model import GraphAttention_OurFeat, GraphIsomorphism_OurFeat
 # from train import DEVICE, train_loop
 from train import train_loop
 from utils.evaluate import save_metrics
@@ -83,6 +83,16 @@ def workflow(locator, num_epochs, tgt_type, graph_type, input_root_dir):
         initialization = locator.config["initialization"]
         if initialization == "ourfeat":
             model = GraphAttention_OurFeat(
+                int(locator.config["hidden_channels"]),
+                num_sources,
+                num_targets,
+                train_loader.loader.data,
+            )
+    
+    elif model_name == "gin":
+        initialization = locator.config["initialization"]
+        if initialization == "ourfeat":
+            model = GraphIsomorphism_OurFeat(
                 int(locator.config["hidden_channels"]),
                 num_sources,
                 num_targets,

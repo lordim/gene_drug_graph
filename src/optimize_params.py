@@ -6,8 +6,7 @@ from tempfile import TemporaryDirectory
 import numpy as np
 import pandas as pd
 import torch
-# from plot.plot_exploration import contour
-from matplotlib.pyplot import contour
+from plot.plot_exploration import contour
 from torch.utils.tensorboard.writer import SummaryWriter
 from tqdm.autonotebook import tqdm
 
@@ -225,7 +224,8 @@ def main():
             torch.device(f"cuda:{args.gpu_device}" if torch.cuda.is_available() else "cpu"),
         )
 
-        e = Evaluator("inputs/validation_evaluation_params.json")
+        # e = Evaluator("inputs/validation_evaluation_params.json")
+        e = Evaluator("configs/eval/validation_evaluation_params.json")
         val_metrics = e.evaluate(logits, ground_truth)
         results.append({**curr_config, **val_metrics})
 
