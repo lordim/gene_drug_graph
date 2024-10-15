@@ -277,7 +277,7 @@ def get_loader(data: HeteroData, edges, leave_out, type: str) -> LinkNeighborLoa
         neg_sampling_ratio = 10
         transform = SampleNegatives(edges, leave_out, neg_sampling_ratio)
     else:
-        transform = SampleNegatives(edges, leave_out)
+        transform = SampleNegatives(edges, leave_out, random_neg = True)
 
     data_loader = LinkNeighborLoader(
         data=data,
@@ -294,7 +294,7 @@ def get_loader(data: HeteroData, edges, leave_out, type: str) -> LinkNeighborLoa
 
 
 def get_loaders(
-    leave_out: str, tgt_type: str, graph_type: str, input_root_dir: str
+    leave_out: str, tgt_type: str, graph_type: str, input_root_dir: str,
 ) -> tuple[LinkNeighborLoader]:
     train_data, valid_data, test_data = load_graph_helper(
         leave_out, tgt_type, graph_type, input_root_dir

@@ -6,6 +6,8 @@ import pandas as pd
 import os
 from utils.evaluate import Evaluator, get_best_th, save_metrics
 
+from motive import get_loaders
+
 #TODO: change setting so that device can be set at start of training
 # DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 SEED = 2024313
@@ -132,6 +134,9 @@ def train_loop(
     val_loader,
     test_loader,
     num_epochs,
+    tgt_type, 
+    graph_type, 
+    input_root_dir,
     log_gradients=False,
 ):
     torch.manual_seed(SEED)
@@ -149,6 +154,10 @@ def train_loop(
     ground_truth, logits = None, None
     best_metric = 0
     for epoch in tqdm(range(1, num_epochs + 1)):
+        # RELOAD train_loader for each epoch here:
+        # for different negative sampling
+        train_loader, _, _ = get_loaders(locator.config["data_split"], tgt_type, graph_type, input_root_dir,)
+
         run_train_epoch(model, train_loader, optimizer, writer, epoch)
         curr_gt, curr_logits, val_metrics = run_eval_epoch(
             model, val_loader, writer, epoch

@@ -12,10 +12,11 @@ SEED = 2024319
 
 
 class SampleNegatives(BaseTransform):
-    def __init__(self, edges, datasplit, ratio=1):
+    def __init__(self, edges, datasplit, ratio=1, random_neg=False):
         self.edges = edges
         self.datasplit = datasplit
         self.ratio = ratio
+        self.random_neg = random_neg
 
         self.device = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if torch.cuda.is_available() else "cpu")
 
@@ -75,7 +76,10 @@ class SampleNegatives(BaseTransform):
         pos_edges = pd.MultiIndex.from_arrays(self.edges)
 
         # 3 chances to sample negative edges
-        rng = np.random.default_rng(SEED)
+        if self.random_neg:
+            rng = np.random.default_rng()
+        else:
+            rng = np.random.default_rng(SEED)
         for _ in range(3):
             rnd_srcs = rng.choice(global_src, size=(num_pos * self.ratio * 2))
             rnd_tgts = rng.choice(global_tgt, size=(num_pos * self.ratio * 2))

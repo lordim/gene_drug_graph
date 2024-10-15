@@ -3,6 +3,7 @@ from torch import Tensor
 from torch.nn import functional as F
 from torch_geometric.data import HeteroData
 from torch_geometric.nn import SAGEConv, to_hetero, TransformerConv, GATv2Conv, GINConv, MLP as tMLP
+from torch_geometric.nn.norm import HeteroLayerNorm
 
 
 class GNN(torch.nn.Module):
@@ -57,19 +58,33 @@ class GIN(torch.nn.Module):
     def __init__(self, hidden_channels):
         super().__init__()
 
-        self.mlp1 = tMLP([hidden_channels, hidden_channels, hidden_channels])
-        self.mlp2 = tMLP([hidden_channels, hidden_channels, hidden_channels])
-        self.conv1 = GINConv(self.mlp1)
-        self.conv2 = GINConv(self.mlp2)
+        self.mlp1 = tMLP(
+            [hidden_channels, hidden_channels, hidden_channels],
+            act="leaky_relu",
+            norm="layernorm",
+            dropout=0.1,
+        )
+        self.mlp2 = tMLP(
+            [hidden_channels, hidden_channels, hidden_channels],
+            act="leaky_relu",
+            norm="layernorm",
+            dropout=0.1,
+        )
 
-        self.batchnorm = torch.nn.BatchNorm1d(hidden_channels)
+        self.conv1 = GINConv(self.mlp1, train_eps=True)
+        self.conv2 = GINConv(self.mlp2, train_eps=True)
+
+        # self.batchnorm = torch.nn.BatchNorm1d(hidden_channels)
     
     def forward(self, x: Tensor, edge_index: Tensor) -> Tensor:
-        h1 = F.leaky_relu(self.conv1(x, edge_index))
-        h1 = self.batchnorm(h1)
+        h1 = self.conv1(x, edge_index)
+        h1 = F.normalize(h1, dim=-1)
+        h1 = F.leaky_relu(h1)
+
         h2 = self.conv2(h1, edge_index)
-        h3 = h1 + h2
-        return h3
+        h2 = F.normalize(h2, dim=-1)
+        # h3 = h1 + h2
+        return h2
 
 
 # Our final classifier applies the dot-product between source and destination
@@ -85,6 +100,51 @@ class Classifier(torch.nn.Module):
         # Apply dot-product to get a prediction per supervision edge:
         return (edge_feat_source * edge_feat_target).sum(dim=-1)
 
+#------------------------- RUM MODELS HERE ----------------------------
+
+from rum_model import RUMModel
+class RUM_Embs(torch.nn.Module):
+    def __init__(self, hidden_channels, num_source_nodes, num_target_nodes, data):
+        super().__init__()
+
+        # embedding matrices for sources and targets:
+        self.source_emb = torch.nn.Embedding(num_source_nodes, hidden_channels)
+        self.target_emb = torch.nn.Embedding(num_target_nodes, hidden_channels)
+
+        # Instantiate homogeneous GNN:
+        self.rum = RUMModel(
+            in_features=hidden_channels,
+            out_features=hidden_channels,
+            hidden_features=hidden_channels,
+            depth=2,
+        )
+
+        # Convert GNN model into a heterogeneous variant:
+        metadata = data.metadata()
+        self.rum = to_hetero(self.rum, metadata=metadata)
+
+        # Instantiate one of the classifier classes
+        self.classifier = Classifier()
+    
+    def forward(self, data: HeteroData) -> Tensor:
+        x_dict = {
+            "source": self.source_emb(data["source"].node_id),
+            "target": self.target_emb(data["target"].node_id),
+        }
+
+        # `x_dict` holds feature matrices of all node types
+        # `edge_index_dict` holds all edge indices of all edge types
+        if self.training:
+            x_dict, c_loss = self.rum(x_dict, data.edge_index_dict)
+        else:
+            x_dict = self.rum(x_dict, data.edge_index_dict)
+
+        pred = self.classifier(
+            x_dict["source"],
+            x_dict["target"],
+            data["source", "binds", "target"].edge_label_index,
+        )
+        return pred
 
 #------------------------- GIN MODELS HERE ----------------------------
 class GraphIsomorphism_Embs(torch.nn.Module):

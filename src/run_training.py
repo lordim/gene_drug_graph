@@ -6,20 +6,13 @@ import torch
 from motive import get_counts, get_loaders
 from model import GraphSAGE_CP, GraphSAGE_Embs, MLP, Bilinear
 from model import GraphTransformer_Embs, GraphTransformer_CP, GraphSAGE_OurFeat, GraphTransformer_OurFeat
-from model import GraphAttention_OurFeat, GraphIsomorphism_OurFeat
+from model import GraphAttention_OurFeat, GraphIsomorphism_OurFeat, RUM_Embs
 # from train import DEVICE, train_loop
 from train import train_loop
 from utils.evaluate import save_metrics
 from utils.utils import PathLocator
 
-
-def workflow(locator, num_epochs, tgt_type, graph_type, input_root_dir):
-    DEVICE = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if torch.cuda.is_available() else "cpu")
-
-    leave_out = locator.config["data_split"]
-    model_name = locator.config["model_name"]
-    train_loader, val_loader, test_loader = get_loaders(leave_out, tgt_type, graph_type, input_root_dir)
-
+def initialize_model(locator, train_loader, model_name):
     num_sources, num_targets, num_features = get_counts(train_loader.loader.data)
 
     if model_name == "gnn":
@@ -98,6 +91,16 @@ def workflow(locator, num_epochs, tgt_type, graph_type, input_root_dir):
                 num_targets,
                 train_loader.loader.data,
             )
+    
+    elif model_name == "rum":
+        initialization = locator.config["initialization"]
+        if initialization == "embs":
+            model = RUM_Embs(
+                int(locator.config["hidden_channels"]),
+                num_sources,
+                num_targets,
+                train_loader.loader.data,
+            )
 
     elif model_name == "mlp":
         model = MLP(
@@ -111,10 +114,26 @@ def workflow(locator, num_epochs, tgt_type, graph_type, input_root_dir):
             num_features["source"],
             num_features["target"],
         )
+    
+    return model  
+
+
+def workflow(args, locator, num_epochs, tgt_type, graph_type, input_root_dir):
+    DEVICE = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if torch.cuda.is_available() else "cpu")
+
+    leave_out = locator.config["data_split"]
+    model_name = locator.config["model_name"]
+    train_loader, val_loader, test_loader = get_loaders(leave_out, tgt_type, graph_type, input_root_dir)
+
+    num_sources, num_targets, num_features = get_counts(train_loader.loader.data)
+
+    # initialize model here:
+    model = initialize_model(locator, train_loader, model_name)
 
     model = model.to(DEVICE)
     results, test_scores, _ = train_loop(
-        model, locator, train_loader, val_loader, test_loader, num_epochs
+        model, locator, train_loader, val_loader, test_loader, num_epochs,
+        tgt_type, graph_type, input_root_dir,
     )
     save_metrics(test_scores, locator.test_metrics_path)
     results.to_parquet(locator.test_results_path)
@@ -155,6 +174,7 @@ def main():
         return
 
     workflow(
+        args,
         locator,
         args.num_epochs,
         args.target_type,
