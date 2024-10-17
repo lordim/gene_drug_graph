@@ -128,6 +128,7 @@ def log_gradients_in_model(model, writer, step):
 
 
 def train_loop(
+    args,
     model,
     locator,
     train_loader,
@@ -156,7 +157,7 @@ def train_loop(
     for epoch in tqdm(range(1, num_epochs + 1)):
         # RELOAD train_loader for each epoch here:
         # for different negative sampling
-        train_loader, _, _ = get_loaders(locator.config["data_split"], tgt_type, graph_type, input_root_dir,)
+        train_loader, _, _ = get_loaders(args, locator.config["data_split"], tgt_type, graph_type, input_root_dir,)
 
         run_train_epoch(model, train_loader, optimizer, writer, epoch)
         curr_gt, curr_logits, val_metrics = run_eval_epoch(

@@ -123,7 +123,7 @@ def workflow(args, locator, num_epochs, tgt_type, graph_type, input_root_dir):
 
     leave_out = locator.config["data_split"]
     model_name = locator.config["model_name"]
-    train_loader, val_loader, test_loader = get_loaders(leave_out, tgt_type, graph_type, input_root_dir)
+    train_loader, val_loader, test_loader = get_loaders(args, leave_out, tgt_type, graph_type, input_root_dir)
 
     num_sources, num_targets, num_features = get_counts(train_loader.loader.data)
 
@@ -132,7 +132,7 @@ def workflow(args, locator, num_epochs, tgt_type, graph_type, input_root_dir):
 
     model = model.to(DEVICE)
     results, test_scores, _ = train_loop(
-        model, locator, train_loader, val_loader, test_loader, num_epochs,
+        args, model, locator, train_loader, val_loader, test_loader, num_epochs,
         tgt_type, graph_type, input_root_dir,
     )
     save_metrics(test_scores, locator.test_metrics_path)
@@ -150,6 +150,9 @@ def main():
     parser.add_argument("output_path", type=str)
     parser.add_argument("--num_epochs", dest="num_epochs", type=int, default=1000)
     parser.add_argument("--gpu_device", type=str, dest="gpu_device", help="GPU device to use")
+
+    # TRAINING ARGS:
+    parser.add_argument("--sample_neg_every_epoch", dest="sample_neg_every_epoch", action="store_true", default=False)
 
     parser.add_argument("--target_type", dest="target_type", default="orf")
     parser.add_argument("--graph_type", dest="graph_type", default="st_expanded")

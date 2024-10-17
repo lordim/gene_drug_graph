@@ -229,7 +229,7 @@ def load_graph_helper(leave_out: str, tgt_type: str, graph_type: str, input_root
     if graph_type == "bipartite":
         paths = [
             os.path.join(input_root_dir, f"{graph_type}/{tgt_type}/source_admet.parquet"),
-            os.path.join(input_root_dir, f"{graph_type}/{tgt_type}/target.parquet"),
+            os.path.join(input_root_dir, f"{graph_type}/{tgt_type}/target_llm.parquet"),
             os.path.join(input_root_dir, f"{graph_type}/{tgt_type}/{leave_out}/s_t_labels.parquet"),
             # f"data/{graph_type}/{tgt_type}/source.parquet",
             # f"data/{graph_type}/{tgt_type}/target.parquet",
@@ -242,7 +242,7 @@ def load_graph_helper(leave_out: str, tgt_type: str, graph_type: str, input_root
     else:
         paths = [
             os.path.join(input_root_dir, f"{graph_type}/{tgt_type}/source_admet.parquet"),
-            os.path.join(input_root_dir, f"{graph_type}/{tgt_type}/target.parquet"),
+            os.path.join(input_root_dir, f"{graph_type}/{tgt_type}/target_llm.parquet"),
             # f"data/{graph_type}/{tgt_type}/source.parquet",
             # f"data/{graph_type}/{tgt_type}/target.parquet",
         ] + [
@@ -258,7 +258,7 @@ def load_graph_helper(leave_out: str, tgt_type: str, graph_type: str, input_root
     return train_data, valid_data, test_data
 
 
-def get_loader(data: HeteroData, edges, leave_out, type: str) -> LinkNeighborLoader:
+def get_loader(data: HeteroData, edges, leave_out, type: str, sample_neg_every_epoch: bool) -> LinkNeighborLoader:
 
     dev = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if torch.cuda.is_available() else "cpu")
 
@@ -277,7 +277,7 @@ def get_loader(data: HeteroData, edges, leave_out, type: str) -> LinkNeighborLoa
         neg_sampling_ratio = 10
         transform = SampleNegatives(edges, leave_out, neg_sampling_ratio)
     else:
-        transform = SampleNegatives(edges, leave_out, random_neg = True)
+        transform = SampleNegatives(edges, leave_out, random_neg = sample_neg_every_epoch)
 
     data_loader = LinkNeighborLoader(
         data=data,
@@ -294,15 +294,15 @@ def get_loader(data: HeteroData, edges, leave_out, type: str) -> LinkNeighborLoa
 
 
 def get_loaders(
-    leave_out: str, tgt_type: str, graph_type: str, input_root_dir: str,
+    args, leave_out: str, tgt_type: str, graph_type: str, input_root_dir: str,
 ) -> tuple[LinkNeighborLoader]:
     train_data, valid_data, test_data = load_graph_helper(
         leave_out, tgt_type, graph_type, input_root_dir
     )
 
     edges = get_all_st_edges(test_data)
-    train_loader = get_loader(train_data, edges, leave_out, "train")
-    valid_loader = get_loader(valid_data, edges, leave_out, "valid")
-    test_loader = get_loader(test_data, edges, leave_out, "test")
+    train_loader = get_loader(train_data, edges, leave_out, "train", args.sample_neg_every_epoch)
+    valid_loader = get_loader(valid_data, edges, leave_out, "valid", args.sample_neg_every_epoch)
+    test_loader = get_loader(test_data, edges, leave_out, "test", False)
 
     return train_loader, valid_loader, test_loader
