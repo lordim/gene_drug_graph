@@ -186,9 +186,9 @@ class GraphIsomorphism_OurFeat(GraphIsomorphism_Embs):
     def __init__(self, hidden_channels, num_source_nodes, num_target_nodes, data):
         super().__init__(hidden_channels, num_source_nodes, num_target_nodes, data)
         src_weights = data["source"].x
-        # tgt_weights = data["target"].x
+        tgt_weights = data["target"].x
         source_size = data["source"].x.shape[1]
-        # target_size = data["target"].x.shape[1]
+        target_size = data["target"].x.shape[1]
 
         self.source_emb = torch.nn.Sequential(
             torch.nn.Embedding(
@@ -198,13 +198,16 @@ class GraphIsomorphism_OurFeat(GraphIsomorphism_Embs):
             torch.nn.LeakyReLU(),
         )
 
-        # self.target_emb = torch.nn.Sequential(
-        #     torch.nn.Embedding(
-        #         num_target_nodes, target_size, _weight=tgt_weights, _freeze=True
-        #     ),
-        #     torch.nn.Linear(target_size, hidden_channels),
-        #     torch.nn.ReLU(),
-        # )
+        self.target_emb = torch.nn.Sequential(
+            torch.nn.Embedding(
+                num_target_nodes, target_size, _weight=tgt_weights, _freeze=True
+            ),
+            torch.nn.Linear(target_size, hidden_channels * 4),
+            torch.nn.Dropout(p=0.1),
+            torch.nn.LeakyReLU(),
+            torch.nn.Linear(hidden_channels * 4, hidden_channels),
+            torch.nn.LeakyReLU(),
+        )
 
 #------------------------- GAT MODELS HERE ----------------------------
 class GraphAttention_Embs(torch.nn.Module):

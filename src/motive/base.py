@@ -258,7 +258,8 @@ def load_graph_helper(leave_out: str, tgt_type: str, graph_type: str, input_root
     return train_data, valid_data, test_data
 
 
-def get_loader(data: HeteroData, edges, leave_out, type: str, sample_neg_every_epoch: bool) -> LinkNeighborLoader:
+def get_loader(data: HeteroData, edges, leave_out, type: str, sample_neg_every_epoch: bool, 
+               gnn_model = None, epoch = None, num_epochs = None) -> LinkNeighborLoader:
 
     dev = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if torch.cuda.is_available() else "cpu")
 
@@ -276,8 +277,11 @@ def get_loader(data: HeteroData, edges, leave_out, type: str, sample_neg_every_e
     if type == "test":
         neg_sampling_ratio = 10
         transform = SampleNegatives(edges, leave_out, neg_sampling_ratio)
+    # elif type == "valid":
+    #     transform = SampleNegatives(edges, leave_out)
     else:
-        transform = SampleNegatives(edges, leave_out, random_neg = sample_neg_every_epoch)
+        transform = SampleNegatives(edges, leave_out, random_neg = sample_neg_every_epoch, 
+                                    gnn_model=gnn_model, epoch=epoch, num_epochs=num_epochs)
 
     data_loader = LinkNeighborLoader(
         data=data,
@@ -290,18 +294,24 @@ def get_loader(data: HeteroData, edges, leave_out, type: str, sample_neg_every_e
         shuffle=shuffle,
         filter_per_worker=True,
     )
+
+    del transform
+    
     return PrefetchLoader(loader=data_loader, device=dev)
 
 
 def get_loaders(
-    args, leave_out: str, tgt_type: str, graph_type: str, input_root_dir: str,
+    args, leave_out: str, tgt_type: str, graph_type: str, input_root_dir: str, 
+    gnn_model = None, epoch = None, num_epochs = None,
 ) -> tuple[LinkNeighborLoader]:
     train_data, valid_data, test_data = load_graph_helper(
         leave_out, tgt_type, graph_type, input_root_dir
     )
 
     edges = get_all_st_edges(test_data)
-    train_loader = get_loader(train_data, edges, leave_out, "train", args.sample_neg_every_epoch)
+    # print("Edges shape:", edges.shape)
+    train_loader = get_loader(train_data, edges, leave_out, "train", args.sample_neg_every_epoch, 
+                              gnn_model=gnn_model, epoch=epoch, num_epochs=num_epochs)
     valid_loader = get_loader(valid_data, edges, leave_out, "valid", args.sample_neg_every_epoch)
     test_loader = get_loader(test_data, edges, leave_out, "test", False)
 
