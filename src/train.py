@@ -157,10 +157,13 @@ def train_loop(
     for epoch in tqdm(range(1, num_epochs + 1)):
         # RELOAD train_loader for each epoch here:
         # for different negative sampling
-        train_loader, _, _ = get_loaders(args, locator.config["data_split"], tgt_type, graph_type, input_root_dir, 
-                                         gnn_model=model, epoch=epoch, num_epochs = num_epochs)
+        train_loader = get_loaders(args, locator.config["data_split"], tgt_type, graph_type, input_root_dir, 
+                                   gnn_model=model, epoch=epoch, num_epochs = num_epochs, train_only=True)
 
         run_train_epoch(model, train_loader, optimizer, writer, epoch)
+
+        del train_loader
+
         curr_gt, curr_logits, val_metrics = run_eval_epoch(
             model, val_loader, writer, epoch
         )

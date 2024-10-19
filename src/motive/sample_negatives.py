@@ -144,8 +144,9 @@ class SampleNegatives(BaseTransform):
         
         # print("Neg pairs before adjustment:", neg_pairs.shape)
         # ---------------HERE----------------
-        self.gnn_model = None
+        # self.gnn_model = None
         if self.gnn_model:
+            # print(f"Epoch {self.epoch}, SHOULD BE HERE!!!!")
             with torch.no_grad():
                 neg_data = data.clone()
                 # print(neg_data)
@@ -162,7 +163,7 @@ class SampleNegatives(BaseTransform):
 
                 logits = self.gnn_model(neg_data)
 
-                self.gnn_model = self.gnn_model.detach().cpu()
+                # del self.gnn_model
                 
                 neg_data = neg_data.detach().cpu()
 

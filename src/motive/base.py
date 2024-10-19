@@ -294,24 +294,23 @@ def get_loader(data: HeteroData, edges, leave_out, type: str, sample_neg_every_e
         shuffle=shuffle,
         filter_per_worker=True,
     )
-
-    del transform
     
     return PrefetchLoader(loader=data_loader, device=dev)
 
 
 def get_loaders(
     args, leave_out: str, tgt_type: str, graph_type: str, input_root_dir: str, 
-    gnn_model = None, epoch = None, num_epochs = None,
+    gnn_model = None, epoch = None, num_epochs = None, train_only = False,
 ) -> tuple[LinkNeighborLoader]:
     train_data, valid_data, test_data = load_graph_helper(
         leave_out, tgt_type, graph_type, input_root_dir
     )
 
     edges = get_all_st_edges(test_data)
-    # print("Edges shape:", edges.shape)
     train_loader = get_loader(train_data, edges, leave_out, "train", args.sample_neg_every_epoch, 
                               gnn_model=gnn_model, epoch=epoch, num_epochs=num_epochs)
+    if train_only:
+        return train_loader
     valid_loader = get_loader(valid_data, edges, leave_out, "valid", args.sample_neg_every_epoch)
     test_loader = get_loader(test_data, edges, leave_out, "test", False)
 
