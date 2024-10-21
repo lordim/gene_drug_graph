@@ -8,7 +8,6 @@ from torch_geometric.loader import LinkNeighborLoader, PrefetchLoader
 
 from .sample_negatives import SampleNegatives
 
-#TODO: change setting so that device can be set at start of training
 # DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -215,12 +214,22 @@ def load_graph(
     return data
 
 
-def load_graph_helper(leave_out: str, tgt_type: str, graph_type: str, input_root_dir: str):
+def load_graph_helper(leave_out: str, tgt_type: str, graph_type: str, input_root_dir: str,
+                      init_feature: str,):
     """
     Helper function to load the correct graph type based on
     datasplit, target profiles, and edge types. Eventually will take
     this out of hard code.
     """
+
+    if init_feature == "ourfeat":
+        src_name = "source_admet"
+        tgt_name = "target_llm"
+    else:
+        src_name = "source"
+        tgt_name = "target"
+    # else:
+    #     raise NotImplementedError("Init feature name not recognized:", locator.config["initialization"])
 
     training = [["message"], ["train"]]
     validation = [["message", "train"], ["valid"]]
@@ -228,8 +237,8 @@ def load_graph_helper(leave_out: str, tgt_type: str, graph_type: str, input_root
 
     if graph_type == "bipartite":
         paths = [
-            os.path.join(input_root_dir, f"{graph_type}/{tgt_type}/source_admet.parquet"),
-            os.path.join(input_root_dir, f"{graph_type}/{tgt_type}/target_llm.parquet"),
+            os.path.join(input_root_dir, f"{graph_type}/{tgt_type}/{src_name}.parquet"),
+            os.path.join(input_root_dir, f"{graph_type}/{tgt_type}/{tgt_name}.parquet"),
             os.path.join(input_root_dir, f"{graph_type}/{tgt_type}/{leave_out}/s_t_labels.parquet"),
             # f"data/{graph_type}/{tgt_type}/source.parquet",
             # f"data/{graph_type}/{tgt_type}/target.parquet",
@@ -241,8 +250,8 @@ def load_graph_helper(leave_out: str, tgt_type: str, graph_type: str, input_root
 
     else:
         paths = [
-            os.path.join(input_root_dir, f"{graph_type}/{tgt_type}/source_admet.parquet"),
-            os.path.join(input_root_dir, f"{graph_type}/{tgt_type}/target_llm.parquet"),
+            os.path.join(input_root_dir, f"{graph_type}/{tgt_type}/{src_name}.parquet"),
+            os.path.join(input_root_dir, f"{graph_type}/{tgt_type}/{tgt_name}.parquet"),
             # f"data/{graph_type}/{tgt_type}/source.parquet",
             # f"data/{graph_type}/{tgt_type}/target.parquet",
         ] + [
@@ -258,7 +267,7 @@ def load_graph_helper(leave_out: str, tgt_type: str, graph_type: str, input_root
     return train_data, valid_data, test_data
 
 
-def get_loader(data: HeteroData, edges, leave_out, type: str, sample_neg_every_epoch: bool, 
+def get_loader(data: HeteroData, edges, leave_out, type: str, args = None, 
                gnn_model = None, epoch = None, num_epochs = None) -> LinkNeighborLoader:
 
     dev = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if torch.cuda.is_available() else "cpu")
@@ -276,11 +285,11 @@ def get_loader(data: HeteroData, edges, leave_out, type: str, sample_neg_every_e
 
     if type == "test":
         neg_sampling_ratio = 10
-        transform = SampleNegatives(edges, leave_out, neg_sampling_ratio)
-    # elif type == "valid":
+        transform = SampleNegatives(edges, leave_out, ratio=neg_sampling_ratio, train_args = args,)
+    # else:
     #     transform = SampleNegatives(edges, leave_out)
     else:
-        transform = SampleNegatives(edges, leave_out, random_neg = sample_neg_every_epoch, 
+        transform = SampleNegatives(edges, leave_out, ratio=args.train_neg_ratio, train_args = args,
                                     gnn_model=gnn_model, epoch=epoch, num_epochs=num_epochs)
 
     data_loader = LinkNeighborLoader(
@@ -300,18 +309,18 @@ def get_loader(data: HeteroData, edges, leave_out, type: str, sample_neg_every_e
 
 def get_loaders(
     args, leave_out: str, tgt_type: str, graph_type: str, input_root_dir: str, 
-    gnn_model = None, epoch = None, num_epochs = None, train_only = False,
+    gnn_model = None, epoch = None, num_epochs = None, train_only = False, init_feature = None,
 ) -> tuple[LinkNeighborLoader]:
     train_data, valid_data, test_data = load_graph_helper(
-        leave_out, tgt_type, graph_type, input_root_dir
+        leave_out, tgt_type, graph_type, input_root_dir, init_feature
     )
 
     edges = get_all_st_edges(test_data)
-    train_loader = get_loader(train_data, edges, leave_out, "train", args.sample_neg_every_epoch, 
+    train_loader = get_loader(train_data, edges, leave_out, "train", args, 
                               gnn_model=gnn_model, epoch=epoch, num_epochs=num_epochs)
     if train_only:
         return train_loader
-    valid_loader = get_loader(valid_data, edges, leave_out, "valid", args.sample_neg_every_epoch)
-    test_loader = get_loader(test_data, edges, leave_out, "test", False)
+    valid_loader = get_loader(valid_data, edges, leave_out, "valid", args)
+    test_loader = get_loader(test_data, edges, leave_out, "test")
 
     return train_loader, valid_loader, test_loader

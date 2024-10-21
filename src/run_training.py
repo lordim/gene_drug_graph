@@ -153,6 +153,8 @@ def main():
 
     # TRAINING ARGS:
     parser.add_argument("--sample_neg_every_epoch", dest="sample_neg_every_epoch", action="store_true", default=False)
+    parser.add_argument("--train_neg_ratio", dest="train_neg_ratio", type=int, default=1)
+    parser.add_argument("--neg_explore_ratio", dest="neg_explore_ratio", type=int, default=1)
 
     parser.add_argument("--target_type", dest="target_type", default="orf")
     parser.add_argument("--graph_type", dest="graph_type", default="st_expanded")

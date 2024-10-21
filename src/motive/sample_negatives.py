@@ -7,7 +7,6 @@ from torch_geometric.transforms import BaseTransform
 
 SEED = 2024319
 
-#TODO: change setting so that device can be set at start of training
 # DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -38,20 +37,23 @@ def sample_indices(scores, p, k, dev=None):
 
 
 class SampleNegatives(BaseTransform):
-    def __init__(self, edges, datasplit, ratio=1, random_neg=False, gnn_model=None, 
+    def __init__(self, edges, datasplit, ratio=1, train_args=None, gnn_model=None, 
                  epoch=None, num_epochs=None):
         self.edges = edges
         self.datasplit = datasplit
         self.ratio = ratio
-        self.random_neg = random_neg
+
+        self.random_neg = False
+        if train_args:
+            self.random_neg = train_args.sample_neg_every_epoch
+            self.explore_coeff = train_args.neg_explore_ratio
 
         self.gnn_model = gnn_model
         self.epoch = epoch
         self.num_epochs = num_epochs
-        self.explore_coeff = 2
 
-        if self.gnn_model:
-            self.ratio = self.ratio * self.explore_coeff
+        if self.gnn_model is None:
+            self.explore_coeff = 1
 
         self.device = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if torch.cuda.is_available() else "cpu")
 
@@ -116,8 +118,8 @@ class SampleNegatives(BaseTransform):
         else:
             rng = np.random.default_rng(SEED)
         for _ in range(3):
-            rnd_srcs = rng.choice(global_src, size=(num_pos * self.ratio * 2))
-            rnd_tgts = rng.choice(global_tgt, size=(num_pos * self.ratio * 2))
+            rnd_srcs = rng.choice(global_src, size=(num_pos * self.ratio * self.explore_coeff * 2))
+            rnd_tgts = rng.choice(global_tgt, size=(num_pos * self.ratio * self.explore_coeff * 2))
 
             rnd_pairs = np.stack((rnd_srcs, rnd_tgts))
             rnd_pairs = np.unique(rnd_pairs, axis=1)
@@ -127,7 +129,7 @@ class SampleNegatives(BaseTransform):
 
             if len([*neg_pairs]) < (num_pos * self.ratio):
                 continue
-            neg_pairs = rng.choice([*neg_pairs], num_pos * self.ratio, replace=False).T
+            neg_pairs = rng.choice([*neg_pairs], num_pos * self.ratio * self.explore_coeff, replace=False).T
             break
 
         else:
@@ -139,7 +141,7 @@ class SampleNegatives(BaseTransform):
         if self.gnn_model:
             with torch.no_grad():
                 neg_data = data.clone()
-                neg_data["binds"].edge_label = torch.zeros(num_pos * self.ratio).to(self.device)
+                neg_data["binds"].edge_label = torch.zeros(num_pos * self.ratio * self.explore_coeff).to(self.device)
 
                 # build dictionaries to map global edge indices to local (subgraph) indices
                 source_map = dict(zip(pd.Series(global_src), pd.Series(subgraph_src)))
