@@ -163,15 +163,6 @@ def main():
 
     os.environ["GPU_DEVICE"] = args.gpu_device
 
-    # imports HERE to avoid cuda visibility issues:
-    # from motive import get_counts, get_loaders
-    # from model import GraphSAGE_CP, GraphSAGE_Embs, MLP, Bilinear
-    # from model import GraphTransformer_Embs, GraphTransformer_CP
-    # from train import DEVICE, train_loop
-    # from utils.evaluate import save_metrics
-    # from utils.utils import PathLocator
-    #-----------------------------------------------
-
 
     locator = PathLocator(args.config_path, args.output_path)
     if os.path.isfile(locator.test_results_path):
