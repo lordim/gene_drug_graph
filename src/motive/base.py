@@ -223,9 +223,11 @@ def load_graph_helper(leave_out: str, tgt_type: str, graph_type: str, input_root
     """
 
     if init_feature == "ourfeat":
+        # print("Using our features")
         src_name = "source_admet"
         tgt_name = "target_llm"
     else:
+        # print("Using CP features")
         src_name = "source"
         tgt_name = "target"
     # else:
@@ -285,9 +287,9 @@ def get_loader(data: HeteroData, edges, leave_out, type: str, args = None,
 
     if type == "test":
         neg_sampling_ratio = 10
-        transform = SampleNegatives(edges, leave_out, ratio=neg_sampling_ratio, train_args = args,)
-    # else:
-    #     transform = SampleNegatives(edges, leave_out)
+        transform = SampleNegatives(edges, leave_out, ratio=neg_sampling_ratio,)
+    elif type == "valid":
+        transform = SampleNegatives(edges, leave_out, ratio=args.train_neg_ratio,)
     else:
         transform = SampleNegatives(edges, leave_out, ratio=args.train_neg_ratio, train_args = args,
                                     gnn_model=gnn_model, epoch=epoch, num_epochs=num_epochs)

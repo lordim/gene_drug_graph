@@ -2,6 +2,7 @@ import argparse
 import os
 import os.path
 import torch
+import wandb
 
 from motive import get_counts, get_loaders
 from model import GraphSAGE_CP, GraphSAGE_Embs, MLP, Bilinear
@@ -148,10 +149,19 @@ def main():
 
     parser.add_argument("config_path", type=str)
     parser.add_argument("output_path", type=str)
-    parser.add_argument("--num_epochs", dest="num_epochs", type=int, default=1000)
+    parser.add_argument("--num_epochs", dest="num_epochs", type=int, default=500)
     parser.add_argument("--gpu_device", type=str, dest="gpu_device", help="GPU device to use")
 
+    # WANDB ARGS:
+    parser.add_argument("--wandb_project", dest="wandb_project", default="gene_drug_graph")
+    parser.add_argument("--wandb_entity", dest="wandb_entity", default="lordim")
+    parser.add_argument("--wandb_group", dest="wandb_group", default="test")
+    parser.add_argument("--wandb_runid", dest="wandb_runid", default="test")
+    parser.add_argument("--wandb_output_dir", dest="wandb_output_dir", default="~/tmp")
+    # parser.add_argument("--use_wandb", dest="use_wandb", action="store_true", default=False)
+
     # TRAINING ARGS:
+    parser.add_argument("--lr", dest="lr", type=float, default=1e-3, help="Learning rate")
     parser.add_argument("--sample_neg_every_epoch", dest="sample_neg_every_epoch", action="store_true", default=False)
     parser.add_argument("--train_neg_ratio", dest="train_neg_ratio", type=int, default=1)
     parser.add_argument("--neg_explore_ratio", dest="neg_explore_ratio", type=int, default=1)
@@ -163,11 +173,25 @@ def main():
 
     os.environ["GPU_DEVICE"] = args.gpu_device
 
-
     locator = PathLocator(args.config_path, args.output_path)
     if os.path.isfile(locator.test_results_path):
         print(f"{locator.test_results_path} exists. Skipping...")
         return
+    
+    # if args.use_wandb:
+    wandb_output_dir = os.path.join(args.wandb_output_dir, args.wandb_runid)
+    if not os.path.exists(wandb_output_dir):
+        os.makedirs(wandb_output_dir)
+
+    wandb.init(
+        project=args.wandb_project,
+        entity=args.wandb_entity,
+        group=args.wandb_group,
+        dir=wandb_output_dir,
+        name=args.wandb_runid,
+        id=args.wandb_runid,
+        config=locator.config,
+    )
 
     workflow(
         args,
@@ -177,6 +201,9 @@ def main():
         args.graph_type,
         args.input_root_dir,
     )
+
+    if args.use_wandb:
+        wandb.finish()
 
 
 if __name__ == "__main__":

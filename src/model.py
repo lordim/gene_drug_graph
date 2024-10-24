@@ -4,6 +4,7 @@ from torch.nn import functional as F
 from torch_geometric.data import HeteroData
 from torch_geometric.nn import SAGEConv, to_hetero, TransformerConv, GATv2Conv, GINConv, MLP as tMLP
 from torch_geometric.nn.norm import HeteroLayerNorm
+from torch_geometric.utils import dropout_edge
 
 
 class GNN(torch.nn.Module):
@@ -13,14 +14,21 @@ class GNN(torch.nn.Module):
         self.conv1 = SAGEConv(hidden_channels, hidden_channels, normalize=True)
         self.conv2 = SAGEConv(hidden_channels, hidden_channels, normalize=True)
 
+        self.dropout = torch.nn.Dropout()
+
         # self.layernorm = torch.nn.LayerNorm(hidden_channels)
 
     def forward(self, x: Tensor, edge_index: Tensor) -> Tensor:
+        # dropout nodes
+        # edge_index, edge_mask = dropout_edge(edge_index, p=0.3, training=self.training)
+
         # Define a 2-layer GNN computation graph.
-        h1 = F.relu(self.conv1(x, edge_index))
+        h1 = F.leaky_relu(self.conv1(x, edge_index))
+        h1 = self.dropout(h1)
+        
         h2 = self.conv2(h1, edge_index)
-        h3 = h1 + h2
-        return h3
+        # h3 = h1 + h2
+        return h2
 
 class GTN(torch.nn.Module):
     def __init__(self, hidden_channels, num_heads=4):
@@ -33,7 +41,7 @@ class GTN(torch.nn.Module):
 
     def forward(self, x: Tensor, edge_index: Tensor) -> Tensor:
         x = self.conv1(x, edge_index)
-        x = F.relu(x)
+        x = F.leaky_relu(x)
         x = self.layernorm(x)
         x = self.conv2(x, edge_index)
         return x
@@ -49,7 +57,7 @@ class GAT(torch.nn.Module):
 
     def forward(self, x: Tensor, edge_index: Tensor) -> Tensor:
         x = self.conv1(x, edge_index)
-        x = F.relu(x)
+        x = F.leaky_relu(x)
         x = self.layernorm(x)
         x = self.conv2(x, edge_index)
         return x
@@ -447,12 +455,15 @@ class GraphSAGE_OurFeat(GraphSAGE_Embs):
             torch.nn.Embedding(
                 num_target_nodes, target_size, _weight=tgt_weights, _freeze=True
             ),
-            torch.nn.Linear(target_size, hidden_channels * 4),
-            torch.nn.Dropout(p=0.1),
+            # torch.nn.Linear(target_size, hidden_channels),
+            torch.nn.Linear(target_size, hidden_channels * 2),
+            torch.nn.Dropout(),
             torch.nn.LeakyReLU(),
-            torch.nn.Linear(hidden_channels * 4, hidden_channels),
+            torch.nn.Linear(hidden_channels * 2, hidden_channels),
             torch.nn.LeakyReLU(),
         )
+
+        print("Using GraphSAGE_OurFeat Model")
 
 class MLP(torch.nn.Module):
     def __init__(self, source_size, target_size, hidden_size):

@@ -4,7 +4,11 @@ from torch.utils.tensorboard.writer import SummaryWriter
 from tqdm.autonotebook import tqdm
 import pandas as pd
 import os
+import wandb
 from utils.evaluate import Evaluator, get_best_th, save_metrics
+
+from torch.optim.lr_scheduler import ConstantLR
+from lr_scheduler import CosineAnnealingWarmUpRestarts
 
 from motive import get_loaders
 
@@ -35,6 +39,8 @@ def run_update(model, optimizer, data):
 def run_train_epoch(model, train_loader, optimizer, writer, epoch):
     dev = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if torch.cuda.is_available() else "cpu")
 
+    model.train()
+
     total_loss = total_examples = 0
     cm_counts = torch.zeros((2, 2), dtype=torch.long).to(dev)
     for sampled_data in tqdm(train_loader, leave=False, disable=True):
@@ -46,12 +52,16 @@ def run_train_epoch(model, train_loader, optimizer, writer, epoch):
     writer.add_scalar("Loss/train", loss, epoch)
     writer.flush()
 
+    wandb.log({"train_loss": loss}, step=epoch)
+    # print(f"Epoch {epoch}. Train Loss: {loss}")
+
 
 def run_eval_epoch(model, val_loader, writer, epoch):
     dev = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if torch.cuda.is_available() else "cpu")
 
     logits = []
     ground_truth = []
+    model.eval()
     with torch.no_grad():
         for sampled_data in val_loader:
             sampled_data.to(dev)
@@ -65,8 +75,14 @@ def run_eval_epoch(model, val_loader, writer, epoch):
         e = Evaluator("configs/eval/validation_evaluation_params.json")
         valid_metrics = e.evaluate(logits, ground_truth)
 
+    wandb.log({"valid_loss": loss,}, step=epoch)
+    # print(f"Epoch {epoch}. Valid Loss: {loss}")
+
     for metric, score in valid_metrics.items():
+        wandb.log({"valid_"+metric : score}, step=epoch)
+
         writer.add_scalar("Valid_" + metric, score, epoch)
+        # print(f"Epoch {epoch}. Valid {metric}: {score}")
 
     return ground_truth, logits, valid_metrics
 
@@ -78,6 +94,7 @@ def run_test(model, test_loader, best_th, writer):
     ground_truth = []
     src_ids = []
     tgt_ids = []
+    model.eval()
     with torch.no_grad():
         for sampled_data in test_loader:
             sampled_data.to(dev)
@@ -142,9 +159,11 @@ def train_loop(
     torch.manual_seed(SEED)
     optimizer = torch.optim.AdamW(
         model.parameters(),
-        lr=locator.config["learning_rate"],
+        lr=args.lr,
         weight_decay=locator.config["weight_decay"],
     )
+    scheduler_lr = ConstantLR(optimizer, factor=1.0)
+    # scheduler_lr = CosineAnnealingWarmUpRestarts(optimizer, T_0=100, T_mult=1, eta_max=args.lr, T_up=5, gamma=0.5)
     writer = SummaryWriter(
         log_dir=locator.summary_path, comment=locator.config["model_name"]
     )
@@ -154,6 +173,8 @@ def train_loop(
     ground_truth, logits = None, None
     best_metric = 0
     for epoch in tqdm(range(1, num_epochs + 1)):
+        wandb.log({"learning_rate" : scheduler_lr.get_last_lr()[0]}, step=epoch)
+
         # RELOAD train_loader for each epoch here:
         # for different negative sampling
         if args.sample_neg_every_epoch:
@@ -184,6 +205,11 @@ def train_loop(
 
         if log_gradients:
             log_gradients_in_model(model, writer, epoch)
+        
+        # break
+
+        # lr scheduler step
+        scheduler_lr.step()
 
     print("Best validation metric: " + str(best_metric))
     results, test_scores = run_test(model, test_loader, best_th, writer)

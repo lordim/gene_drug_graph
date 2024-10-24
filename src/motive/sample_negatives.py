@@ -127,7 +127,7 @@ class SampleNegatives(BaseTransform):
             inter = rnd_pairs.intersection(pos_edges, sort=False)
             neg_pairs = rnd_pairs.difference(inter, sort=False)
 
-            if len([*neg_pairs]) < (num_pos * self.ratio):
+            if len([*neg_pairs]) < (num_pos * self.ratio * self.explore_coeff):
                 continue
             neg_pairs = rng.choice([*neg_pairs], num_pos * self.ratio * self.explore_coeff, replace=False).T
             break
@@ -139,6 +139,8 @@ class SampleNegatives(BaseTransform):
         # ---------------HERE----------------
         # self.gnn_model = None
         if self.gnn_model:
+            self.gnn_model.eval()
+
             with torch.no_grad():
                 neg_data = data.clone()
                 neg_data["binds"].edge_label = torch.zeros(num_pos * self.ratio * self.explore_coeff).to(self.device)
@@ -160,10 +162,18 @@ class SampleNegatives(BaseTransform):
                 p = 1.0
                 sampled_indices = sample_indices(logits, p, num_pos * self.ratio, dev=self.device)
                 neg_pairs = neg_pairs[:, sampled_indices]
+            
+            self.gnn_model.train()
 
             # sort the logits and get the top k
             # sample with probs p and q accoridng to our algorithm specified
             # with the sample's indices, update neg_pairs
+        
+        # print("num pos:", num_pos)
+        # print("num neg:", len(neg_pairs[0]))
+        # print("self.ratio:", self.ratio)
+        # print("self.explore_coeff:", self.explore_coeff)
+
         # -----------------------------------
 
         # build dictionaries to map global edge indices to local (subgraph) indices
