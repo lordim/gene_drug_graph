@@ -131,6 +131,8 @@ def workflow(args, locator, num_epochs, tgt_type, graph_type, input_root_dir):
     model = initialize_model(locator, train_loader, model_name)
 
     model = model.to(DEVICE)
+
+    train_loader, val_loader, test_loader = get_loaders(leave_out, tgt_type, graph_type, model=model)
     results, test_scores, _ = train_loop(
         model, locator, train_loader, val_loader, test_loader, num_epochs,
         tgt_type, graph_type, input_root_dir,
