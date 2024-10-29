@@ -41,6 +41,8 @@ def workflow(args, locator, num_epochs, tgt_type, graph_type, input_root_dir, ev
         results.to_parquet(locator.test_results_path)
         print(test_scores)
 
+#test
+
 
 def main():
     """Parse input params"""
