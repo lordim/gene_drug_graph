@@ -153,7 +153,7 @@ def load_bipartite_graph(
     supervision: list[str],
 ) -> HeteroData:
 
-    DEVICE = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if torch.cuda.is_available() else "cpu")
+    DEVICE = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if (os.getenv('GPU_DEVICE') != "cpu" and torch.cuda.is_available()) else "cpu")
 
     data = load_node_features(source_path, target_path)
     msgs, sups = load_bipartite_edges(labels_path, message, supervision)
@@ -176,7 +176,7 @@ def load_graph(
     supervision: list[str],
     graph_type: str,
 ) -> HeteroData:
-    DEVICE = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if torch.cuda.is_available() else "cpu")
+    DEVICE = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if (os.getenv('GPU_DEVICE') != "cpu" and torch.cuda.is_available()) else "cpu")
 
     data = load_node_features(source_path, target_path)
 
@@ -267,12 +267,15 @@ def load_graph_helper(leave_out: str, tgt_type: str, graph_type: str,
 
     return train_data, valid_data, test_data
 
+def get_loader(
+        data: HeteroData, edges, leave_out, type: str,
+        args = None, gnn_model = None, epoch = None, num_epochs = None,
+    ) -> LinkNeighborLoader:
 
-def get_loader(data: HeteroData, edges, leave_out, type: str) -> LinkNeighborLoader:
     edge_label_index = data["source", "binds", "target"].edge_label_index
     edge_label = data["source", "binds", "target"].edge_label
 
-    DEVICE = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if torch.cuda.is_available() else "cpu")
+    DEVICE = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if (os.getenv('GPU_DEVICE') != "cpu" and torch.cuda.is_available()) else "cpu")
 
     if type == "train":
         bsz = 512
@@ -288,7 +291,8 @@ def get_loader(data: HeteroData, edges, leave_out, type: str) -> LinkNeighborLoa
         num_neighbors={key: [-1] * 4 for key in data.edge_types},
         edge_label_index=(("source", "binds", "target"), edge_label_index),
         edge_label=edge_label,
-        transform=SampleNegatives(edges, leave_out, ratio),
+        transform=SampleNegatives(edges, leave_out, ratio, all_data=data,
+                                  gnn_model=gnn_model, epoch=epoch, num_epochs=num_epochs),
         subgraph_type="bidirectional",
         batch_size=bsz,
         shuffle=shuffle,
@@ -306,10 +310,12 @@ def get_loaders(
     )
 
     edges = get_all_st_edges(test_data)
-    # train_loader = get_loader(train_data, edges, leave_out, "train", args, 
-    #                           gnn_model=gnn_model, epoch=epoch, num_epochs=num_epochs)
-    # if train_only:
-    #     return train_loader
+
+    if train_only and gnn_model:
+        train_loader = get_loader(train_data, edges, leave_out, "train", 
+                                  args, gnn_model=gnn_model, epoch=epoch, num_epochs=num_epochs)
+        return train_loader
+    
     train_loader = get_loader(train_data, edges, leave_out, "train")
     valid_loader = get_loader(valid_data, edges, leave_out, "valid")
     test_loader = get_loader(test_data, edges, leave_out, "test")

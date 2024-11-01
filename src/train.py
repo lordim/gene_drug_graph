@@ -10,14 +10,14 @@ from utils.evaluate import Evaluator, get_best_th, save_metrics
 from torch.optim.lr_scheduler import ConstantLR
 from lr_scheduler import CosineAnnealingWarmUpRestarts
 
-# from motive import get_loaders
+from motive import get_loaders
 
 # DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 SEED = 2024313
 
 
 def run_update(model, optimizer, data):
-    DEVICE = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if torch.cuda.is_available() else "cpu")
+    DEVICE = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if (os.getenv('GPU_DEVICE') != "cpu" and torch.cuda.is_available()) else "cpu")
 
     if optimizer:  # with Cosine model, optimizer is None
         optimizer.zero_grad()
@@ -44,7 +44,7 @@ def run_train_epoch(model, loader, optimizer):
 
 @torch.inference_mode
 def run_inference_epoch(model, loader):
-    DEVICE = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if torch.cuda.is_available() else "cpu")
+    DEVICE = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if (os.getenv('GPU_DEVICE') != "cpu" and torch.cuda.is_available()) else "cpu")
 
     logits = []
     y_true = []
@@ -63,7 +63,7 @@ def run_inference_epoch(model, loader):
 
 @torch.inference_mode
 def run_test(model, test_loader, th):
-    DEVICE = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if torch.cuda.is_available() else "cpu")
+    DEVICE = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if (os.getenv('GPU_DEVICE') != "cpu" and torch.cuda.is_available()) else "cpu")
 
     logits = []
     y_true = []
@@ -144,7 +144,19 @@ def train_loop(
     best_metric = float("-inf")
     criteria = "Hits@500"
     for epoch in tqdm(range(1, num_epochs + 1)):
+
+        # load new train loader every epoch here:
+        # for dynamic negative sampling
+        train_loader= get_loaders(args, locator.config["data_split"], tgt_type, 
+                                  graph_type, input_root_dir, 
+                                  init_feature=locator.config["initialization"],
+                                  gnn_model=model, train_only=True,
+                                  epoch=epoch, num_epochs=num_epochs)
+
         logits, y_true, edges = run_train_epoch(model, train_loader, optimizer)
+
+        del train_loader
+
         with torch.inference_mode():
             best_th = get_best_th(logits, y_true)
             metrics = ev.evaluate(logits, y_true, best_th, edges)

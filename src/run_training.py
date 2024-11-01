@@ -16,7 +16,7 @@ from utils.utils import PathLocator
 
 
 def workflow(args, locator, num_epochs, tgt_type, graph_type, input_root_dir, eval_test=False):
-    DEVICE = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if torch.cuda.is_available() else "cpu")
+    DEVICE = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if (os.getenv('GPU_DEVICE') != "cpu" and torch.cuda.is_available()) else "cpu")
 
     leave_out = locator.config["data_split"]
     # model_name = locator.config["model_name"]
