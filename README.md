@@ -1,6 +1,8 @@
 # gene_drug_graph
 Graph Neural Network for Predicting Drug-Gene Interactions
 
+% test
+
 ### This repository is built upon the codebase from the following repository:
 https://github.com/carpenter-singh-lab/motive
 
