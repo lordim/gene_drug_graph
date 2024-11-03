@@ -67,16 +67,14 @@ def negative_sampling(source_ix, target_ix, pos_edges, size):
     return samples
 
 def negative_sampling_dynamic(source_ix, target_ix, pos_edges, size, 
-                              data = None, gnn_model = None, explore_coeff = 2):
+                              data = None, gnn_model = None, explore_coeff = 2,
+                              epoch = None, num_epochs = None):
     """
     Negative sampling using GPU and batched impl.
     Create source_ix[i], target_ix[j] pairs that are not present in pos_edges.
     Score the negative edges with the model and sample the top k = size edges.
     """
     DEVICE = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if (os.getenv('GPU_DEVICE') != "cpu" and torch.cuda.is_available()) else "cpu")
-
-    # print("source_ix:", source_ix, len(source_ix))
-    # print("target_ix:", target_ix, len(target_ix))
 
     size = size * explore_coeff
     neg_source_ix = torch.randperm(size) % len(source_ix)
@@ -89,11 +87,6 @@ def negative_sampling_dynamic(source_ix, target_ix, pos_edges, size,
     y_true = torch.any(torch.all(samples[:, None] == pos_edges.T, axis=2), axis=1)
     neg_samples = samples[~y_true]
 
-    # print("neg_source_ix:", neg_source_ix[:10])
-
-    # print("neg_samples shape:", neg_samples.T.shape)
-    # print("neg_samples:", neg_samples.T)
-
     with torch.no_grad():
         neg_data = data.clone()
         neg_data["binds"].edge_label = torch.zeros(len(neg_samples)).to(DEVICE)
@@ -103,7 +96,8 @@ def negative_sampling_dynamic(source_ix, target_ix, pos_edges, size,
 
         neg_data = neg_data.detach().cpu()
         
-        p = 1.0
+        # p = 1.0
+        p = epoch / num_epochs
         sampled_indices = sample_indices(logits, p, size // explore_coeff, dev=DEVICE)
 
     neg_samples = neg_samples[sampled_indices].T
@@ -135,6 +129,9 @@ class SampleNegatives(BaseTransform):
         self.all_data = all_data
         self.gnn_model = gnn_model
 
+        self.epoch = epoch
+        self.num_epochs = num_epochs
+
     def forward(self, data: HeteroData):
         data = data.to(self.device, non_blocking=True)
 
@@ -148,7 +145,9 @@ class SampleNegatives(BaseTransform):
 
         size = num_pos * self.ratio
         if self.gnn_model:
-            neg_edges = negative_sampling_dynamic(global_src, global_tgt, self.edges, size, self.all_data, self.gnn_model)
+            neg_edges = negative_sampling_dynamic(global_src, global_tgt, self.edges, size, 
+                                                  self.all_data, self.gnn_model, explore_coeff=4,
+                                                  epoch=self.epoch, num_epochs=self.num_epochs)
         else:
             neg_edges = negative_sampling(global_src, global_tgt, self.edges, size)
 
