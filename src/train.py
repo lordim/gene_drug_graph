@@ -147,15 +147,17 @@ def train_loop(
 
         # load new train loader every epoch here:
         # for dynamic negative sampling
-        train_loader= get_loaders(args, locator.config["data_split"], tgt_type, 
-                                  graph_type, input_root_dir, 
-                                  init_feature=locator.config["initialization"],
-                                  gnn_model=model, train_only=True,
-                                  epoch=epoch, num_epochs=num_epochs)
+        if args.sample_neg_every_epoch:
+            train_loader= get_loaders(args, locator.config["data_split"], tgt_type, 
+                                    graph_type, input_root_dir, 
+                                    init_feature=locator.config["initialization"],
+                                    gnn_model=model, train_only=True,
+                                    epoch=epoch, num_epochs=num_epochs)
 
         logits, y_true, edges = run_train_epoch(model, train_loader, optimizer)
 
-        del train_loader
+        if args.sample_neg_every_epoch:
+            del train_loader
 
         with torch.inference_mode():
             best_th = get_best_th(logits, y_true)

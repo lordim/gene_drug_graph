@@ -55,7 +55,7 @@ def main():
     parser.add_argument("--num_epochs", dest="num_epochs", type=int, default=500)
     parser.add_argument("--gpu_device", type=str, dest="gpu_device", help="GPU device to use")
 
-    # WANDB ARGS:
+    # WANDB ARGS (CURRENTLY DEPRECATED):
     parser.add_argument("--wandb_project", dest="wandb_project", default="gene_drug_graph")
     parser.add_argument("--wandb_entity", dest="wandb_entity", default="lordim")
     parser.add_argument("--wandb_group", dest="wandb_group", default="test")
@@ -64,7 +64,7 @@ def main():
     parser.add_argument("--use_wandb", dest="use_wandb", action="store_true", default=False)
 
     # TRAINING ARGS:
-    parser.add_argument("--lr", dest="lr", type=float, default=1e-3, help="Learning rate")
+    # parser.add_argument("--lr", dest="lr", type=float, default=1e-3, help="Learning rate")
     parser.add_argument("--sample_neg_every_epoch", dest="sample_neg_every_epoch", action="store_true", default=False)
     parser.add_argument("--train_neg_ratio", dest="train_neg_ratio", type=int, default=1)
     parser.add_argument("--neg_explore_ratio", dest="neg_explore_ratio", type=int, default=1)

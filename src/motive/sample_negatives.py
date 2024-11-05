@@ -117,7 +117,7 @@ def select_nodes_to_sample(data, split):
 
 
 class SampleNegatives(BaseTransform):
-    def __init__(self, edges, split, ratio, 
+    def __init__(self, edges, split, ratio, explore_coeff=2,
                  all_data=None, gnn_model=None, epoch=None, num_epochs=None):
 
         self.device = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if (os.getenv('GPU_DEVICE') != "cpu" and torch.cuda.is_available()) else "cpu")
@@ -125,6 +125,7 @@ class SampleNegatives(BaseTransform):
         self.edges = torch.tensor(edges, device=self.device)
         self.split = split
         self.ratio = ratio
+        self.explore_coeff = explore_coeff
 
         self.all_data = all_data
         self.gnn_model = gnn_model
@@ -143,10 +144,10 @@ class SampleNegatives(BaseTransform):
         global_src = data["source"].node_id[subgraph_src]
         global_tgt = data["target"].node_id[subgraph_tgt]
 
-        size = num_pos * self.ratio
+        size = int(num_pos * self.ratio)
         if self.gnn_model:
             neg_edges = negative_sampling_dynamic(global_src, global_tgt, self.edges, size, 
-                                                  self.all_data, self.gnn_model, explore_coeff=4,
+                                                  self.all_data, self.gnn_model, explore_coeff=self.explore_coeff,
                                                   epoch=self.epoch, num_epochs=self.num_epochs)
         else:
             neg_edges = negative_sampling(global_src, global_tgt, self.edges, size)

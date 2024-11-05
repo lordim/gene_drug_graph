@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import pandas as pd
+import random
 import torch
 import torch_geometric.transforms as T
 from torch_geometric.data import HeteroData
@@ -280,7 +281,9 @@ def get_loader(
     if type == "train":
         bsz = 512
         shuffle = True
-        ratio = 1
+        ratio = args.train_neg_ratio
+        if args.random_neg_ratio:
+            ratio = random.uniform(1, 10)
     else:
         bsz = 8192
         shuffle = False
@@ -291,7 +294,7 @@ def get_loader(
         num_neighbors={key: [-1] * 4 for key in data.edge_types},
         edge_label_index=(("source", "binds", "target"), edge_label_index),
         edge_label=edge_label,
-        transform=SampleNegatives(edges, leave_out, ratio, all_data=data,
+        transform=SampleNegatives(edges, leave_out, ratio, explore_coeff=args.neg_explore_ratio, all_data=data,
                                   gnn_model=gnn_model, epoch=epoch, num_epochs=num_epochs),
         subgraph_type="bidirectional",
         batch_size=bsz,
@@ -313,11 +316,12 @@ def get_loaders(
 
     if train_only and gnn_model:
         train_loader = get_loader(train_data, edges, leave_out, "train", 
-                                  args, gnn_model=gnn_model, epoch=epoch, num_epochs=num_epochs)
+                                  args, gnn_model=gnn_model, epoch=epoch, num_epochs=num_epochs,
+                                 )
         return train_loader
     
-    train_loader = get_loader(train_data, edges, leave_out, "train")
-    valid_loader = get_loader(valid_data, edges, leave_out, "valid")
-    test_loader = get_loader(test_data, edges, leave_out, "test")
+    train_loader = get_loader(train_data, edges, leave_out, "train", args)
+    valid_loader = get_loader(valid_data, edges, leave_out, "valid", args)
+    test_loader = get_loader(test_data, edges, leave_out, "test", args)
 
     return train_loader, valid_loader, test_loader
