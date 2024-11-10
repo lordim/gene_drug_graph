@@ -74,7 +74,9 @@ def negative_sampling_dynamic(source_ix, target_ix, pos_edges, size,
     Create source_ix[i], target_ix[j] pairs that are not present in pos_edges.
     Score the negative edges with the model and sample the top k = size edges.
     """
-    DEVICE = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if (os.getenv('GPU_DEVICE') != "cpu" and torch.cuda.is_available()) else "cpu")
+    # DEVICE = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if (os.getenv('GPU_DEVICE') != "cpu" and torch.cuda.is_available()) else "cpu")
+
+    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     size = size * explore_coeff
     neg_source_ix = torch.randperm(size) % len(source_ix)
@@ -120,7 +122,9 @@ class SampleNegatives(BaseTransform):
     def __init__(self, edges, split, ratio, 
                  all_data=None, gnn_model=None, epoch=None, num_epochs=None):
 
-        self.device = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if (os.getenv('GPU_DEVICE') != "cpu" and torch.cuda.is_available()) else "cpu")
+        # self.device = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if (os.getenv('GPU_DEVICE') != "cpu" and torch.cuda.is_available()) else "cpu")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
         self.edges = torch.tensor(edges, device=self.device)
         self.split = split

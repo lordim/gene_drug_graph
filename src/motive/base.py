@@ -8,7 +8,6 @@ from torch_geometric.loader import LinkNeighborLoader, PrefetchLoader
 
 from .sample_negatives import SampleNegatives
 
-# DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def get_counts(data: HeteroData) -> tuple[int, int, dict]:
@@ -153,8 +152,8 @@ def load_bipartite_graph(
     supervision: list[str],
 ) -> HeteroData:
 
-    DEVICE = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if (os.getenv('GPU_DEVICE') != "cpu" and torch.cuda.is_available()) else "cpu")
-
+    # DEVICE = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if (os.getenv('GPU_DEVICE') != "cpu" and torch.cuda.is_available()) else "cpu")
+    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     data = load_node_features(source_path, target_path)
     msgs, sups = load_bipartite_edges(labels_path, message, supervision)
     edge_label = torch.ones(sups.shape[1], dtype=torch.float)
@@ -176,8 +175,8 @@ def load_graph(
     supervision: list[str],
     graph_type: str,
 ) -> HeteroData:
-    DEVICE = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if (os.getenv('GPU_DEVICE') != "cpu" and torch.cuda.is_available()) else "cpu")
-
+    # DEVICE = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if (os.getenv('GPU_DEVICE') != "cpu" and torch.cuda.is_available()) else "cpu")
+    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     data = load_node_features(source_path, target_path)
 
     if graph_type == "s_expanded":
@@ -275,8 +274,8 @@ def get_loader(
     edge_label_index = data["source", "binds", "target"].edge_label_index
     edge_label = data["source", "binds", "target"].edge_label
 
-    DEVICE = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if (os.getenv('GPU_DEVICE') != "cpu" and torch.cuda.is_available()) else "cpu")
-
+    # DEVICE = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if (os.getenv('GPU_DEVICE') != "cpu" and torch.cuda.is_available()) else "cpu")
+    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if type == "train":
         bsz = 512
         shuffle = True

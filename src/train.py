@@ -17,8 +17,8 @@ SEED = 2024313
 
 
 def run_update(model, optimizer, data):
-    DEVICE = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if (os.getenv('GPU_DEVICE') != "cpu" and torch.cuda.is_available()) else "cpu")
-
+    # DEVICE = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if (os.getenv('GPU_DEVICE') != "cpu" and torch.cuda.is_available()) else "cpu")
+    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if optimizer:  # with Cosine model, optimizer is None
         optimizer.zero_grad()
     data.to(DEVICE)
@@ -44,8 +44,8 @@ def run_train_epoch(model, loader, optimizer):
 
 @torch.inference_mode
 def run_inference_epoch(model, loader):
-    DEVICE = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if (os.getenv('GPU_DEVICE') != "cpu" and torch.cuda.is_available()) else "cpu")
-
+    # DEVICE = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if (os.getenv('GPU_DEVICE') != "cpu" and torch.cuda.is_available()) else "cpu")
+    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logits = []
     y_true = []
     edges = []
@@ -63,8 +63,8 @@ def run_inference_epoch(model, loader):
 
 @torch.inference_mode
 def run_test(model, test_loader, th):
-    DEVICE = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if (os.getenv('GPU_DEVICE') != "cpu" and torch.cuda.is_available()) else "cpu")
-
+    # DEVICE = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if (os.getenv('GPU_DEVICE') != "cpu" and torch.cuda.is_available()) else "cpu")
+    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logits = []
     y_true = []
     src_ids = []

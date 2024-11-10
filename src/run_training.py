@@ -16,7 +16,9 @@ from utils.utils import PathLocator
 
 
 def workflow(args, locator, num_epochs, tgt_type, graph_type, input_root_dir, eval_test=False):
-    DEVICE = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if (os.getenv('GPU_DEVICE') != "cpu" and torch.cuda.is_available()) else "cpu")
+    # DEVICE = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if (os.getenv('GPU_DEVICE') != "cpu" and torch.cuda.is_available()) else "cpu")
+
+    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     leave_out = locator.config["data_split"]
     # model_name = locator.config["model_name"]
@@ -56,8 +58,8 @@ def main():
     parser.add_argument("--gpu_device", type=str, dest="gpu_device", help="GPU device to use")
 
     # WANDB ARGS:
-    parser.add_argument("--wandb_project", dest="wandb_project", default="gene_drug_graph")
-    parser.add_argument("--wandb_entity", dest="wandb_entity", default="lordim")
+    parser.add_argument("--wandb_project", dest="wandb_project", default="huggingface")
+    parser.add_argument("--wandb_entity", dest="wandb_entity", default="ziyixu686")
     parser.add_argument("--wandb_group", dest="wandb_group", default="test")
     parser.add_argument("--wandb_runid", dest="wandb_runid", default="test")
     parser.add_argument("--wandb_output_dir", dest="wandb_output_dir", default="~/tmp")
@@ -75,7 +77,7 @@ def main():
     parser.add_argument("--input_root_dir", dest="input_root_dir", help="root directory for input/data")
     args = parser.parse_args()
 
-    os.environ["GPU_DEVICE"] = args.gpu_device
+    # os.environ["GPU_DEVICE"] = args.gpu_device
 
     locator = PathLocator(args.config_path, args.output_path)
     if os.path.isfile(locator.test_results_path):
