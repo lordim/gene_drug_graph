@@ -82,9 +82,9 @@ class Classifier(torch.nn.Module):
         return (edge_feat_source * edge_feat_target).sum(dim=-1)
 
 
-class GNN_Embs(torch.nn.Module):
+class GraphSAGE_Embs(torch.nn.Module):
     def __init__(
-        self, hidden_channels, num_source_nodes, num_target_nodes, data, GNNClass, use_wandb,
+        self, hidden_channels, num_source_nodes, num_target_nodes, data, GNNClass, pretrain_source
     ):
         super().__init__()
 
@@ -102,7 +102,7 @@ class GNN_Embs(torch.nn.Module):
         # Instantiate one of the classifier classes
         self.classifier = Classifier()
 
-        self.use_wandb = use_wandb
+        self.pretrain_source = pretrain_source
 
     def forward(self, data: HeteroData) -> Tensor:
         x_dict = {
@@ -114,22 +114,29 @@ class GNN_Embs(torch.nn.Module):
         # `edge_index_dict` holds all edge indices of all edge types
         x_dict = self.gnn(x_dict, data.edge_index_dict)
 
-        pred = self.classifier(
-            x_dict["source"],
-            x_dict["target"],
-            data["source", "binds", "target"].edge_label_index,
-        )
+        if self.pretrain_source:
+            pred = self.classifier(
+                x_dict["source"],
+                x_dict["target"],
+                data["source", "binds", "source"].edge_label_index,
+            )
+        else:
+            pred = self.classifier(
+                x_dict["source"],
+                x_dict["target"],
+                data["source", "binds", "target"].edge_label_index,
+            )
         return pred
 
 
 # Child of our GNN model that initializes embedding weights with
 # cp features but freezes embeddings throughout training
-class GNN_CP(GNN_Embs):
+class GraphSAGE_CP(GraphSAGE_Embs):
     def __init__(
-        self, hidden_channels, num_source_nodes, num_target_nodes, data, GNNClass, use_wandb,
+        self, hidden_channels, num_source_nodes, num_target_nodes, data, GNNClass, pretrain_source
     ):
         super().__init__(
-            hidden_channels, num_source_nodes, num_target_nodes, data, GNNClass, use_wandb,
+            hidden_channels, num_source_nodes, num_target_nodes, data, GNNClass, pretrain_source
         )
         src_weights = data["source"].x
         tgt_weights = data["target"].x
@@ -151,36 +158,6 @@ class GNN_CP(GNN_Embs):
             torch.nn.Linear(target_size, hidden_channels),
             torch.nn.ReLU(),
         )
-
-# Child of our GNN model that initializes embedding weights with
-# our own features: ADMET feature for source, CURRENTLY random for target
-class GNN_OurFeat(GNN_Embs):
-    def __init__(self, hidden_channels, num_source_nodes, num_target_nodes, data, GNNClass, use_wandb):
-        super().__init__(hidden_channels, num_source_nodes, num_target_nodes, data, GNNClass, use_wandb)
-        src_weights = data["source"].x
-        tgt_weights = data["target"].x
-        source_size = data["source"].x.shape[1]
-        target_size = data["target"].x.shape[1]
-
-        self.source_emb = torch.nn.Sequential(
-            torch.nn.Embedding(
-                num_source_nodes, source_size, _weight=src_weights, _freeze=True
-            ),
-            torch.nn.Linear(source_size, hidden_channels),
-            torch.nn.LeakyReLU(),
-        )
-
-        self.target_emb = torch.nn.Sequential(
-            torch.nn.Embedding(
-                num_target_nodes, target_size, _weight=tgt_weights, _freeze=True
-            ),
-            torch.nn.Linear(target_size, hidden_channels * 4),
-            torch.nn.LeakyReLU(),
-            torch.nn.Linear(hidden_channels * 4, hidden_channels),
-            torch.nn.LeakyReLU(),
-        )
-
-        print(f"Using {GNNClass} Model with our features.")
 
 
 class MLP(torch.nn.Module):
@@ -231,7 +208,7 @@ class Cosine(torch.nn.Module):
         return logits
 
 
-def create_model(locator: PathLocator, data, use_wandb=False):
+def create_model(locator: PathLocator, data, pretrain_source: bool):
     model_name = locator.config["model_name"]
     num_sources, num_targets, num_features = get_counts(data)
 
@@ -239,37 +216,22 @@ def create_model(locator: PathLocator, data, use_wandb=False):
         GNNClass = {"gnn": GNN, "gat": GAT, "gin": GIN}.get(model_name)
         initialization = locator.config["initialization"]
         if initialization == "cp":
-            model = GNN_CP(
+            model = GraphSAGE_CP(
                 int(locator.config["hidden_channels"]),
                 num_sources,
                 num_targets,
                 data,
                 GNNClass,
-                use_wandb=use_wandb,
+                pretrain_source
             )
         elif initialization == "embs":
-            model = GNN_Embs(
+            model = GraphSAGE_Embs(
                 int(locator.config["hidden_channels"]),
                 num_sources,
                 num_targets,
                 data,
                 GNNClass,
-                use_wandb=use_wandb,
             )
-        
-        elif initialization == "ourfeat":
-            model = GNN_OurFeat(
-                int(locator.config["hidden_channels"]),
-                num_sources,
-                num_targets,
-                data,
-                GNNClass,
-                use_wandb=use_wandb,
-            )
-
-        else:
-            raise NotImplementedError(f"Initialization {initialization} not supported for GNN.")
-
     elif model_name == "mlp":
         model = MLP(
             num_features["source"],

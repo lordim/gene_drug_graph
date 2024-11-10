@@ -1,4 +1,3 @@
-import os
 import numpy as np
 import pandas as pd
 import torch
@@ -8,7 +7,7 @@ from torch_geometric.loader import LinkNeighborLoader, PrefetchLoader
 
 from .sample_negatives import SampleNegatives
 
-# DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def get_counts(data: HeteroData) -> tuple[int, int, dict]:
@@ -114,11 +113,53 @@ def load_edges(
     t_t_labels_path: str,
     message: list[str],
     supervision: list[str],
+    pretrain_source = False,
 ) -> tuple[torch.tensor, torch.tensor]:
     """Load messages and supervision edges in torch tensors"""
     s_s_edges = pd.read_parquet(s_s_labels_path)
     s_t_edges = pd.read_parquet(s_t_labels_path)
     t_t_edges = pd.read_parquet(t_t_labels_path)
+
+    if pretrain_source:
+        # train_loader and val_loader
+        if message == ['message'] or message == ["message", "train"]:
+            s_s_type = ["message", "train"]
+            s_s_msgs = s_s_edges.query("subset.isin(@s_s_type)")
+            s_s_msgs = torch.tensor(
+                s_s_msgs[["source_a", "source_b"]].values.T, dtype=torch.long
+            )
+
+            s_s_type = ["valid"]
+            s_s_sup = s_s_edges.query("subset.isin(@s_s_type)")
+            s_s_sup = torch.tensor(
+                s_s_sup[["source_a", "source_b"]].values.T, dtype=torch.long
+            )
+        else:
+            # test_loader
+            s_s_type = ["message", "train", "valid"]
+            s_s_msgs = s_s_edges.query("subset.isin(@s_s_type)")
+            s_s_msgs = torch.tensor(
+                s_s_msgs[["source_a", "source_b"]].values.T, dtype=torch.long
+            )
+
+            s_s_type = ["test"]
+            s_s_sup = s_s_edges.query("subset.isin(@s_s_type)")
+            s_s_sup = torch.tensor(
+                s_s_sup[["source_a", "source_b"]].values.T, dtype=torch.long
+            )
+        
+        if message == ["message"]:
+            t_t_msgs = t_t_edges.query("subset.isin(@supervision)")
+        else:
+            t_t_msgs = t_t_edges.query("subset.isin(@message)")
+        s_t_msgs = s_t_edges.query("subset.isin(@message)")
+        
+        t_t_msgs = torch.tensor(
+            t_t_msgs[["target_a", "target_b"]].values.T, dtype=torch.long
+        )
+        s_t_msgs = torch.tensor(s_t_msgs[["source", "target"]].values.T, dtype=torch.long)
+
+        return s_s_msgs, s_s_sup, s_t_msgs, t_t_msgs 
 
     # set source target edges as message and supervision training edges
     msgs = s_t_edges.query("subset.isin(@message)")
@@ -152,9 +193,6 @@ def load_bipartite_graph(
     message: list[str],
     supervision: list[str],
 ) -> HeteroData:
-
-    DEVICE = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if (os.getenv('GPU_DEVICE') != "cpu" and torch.cuda.is_available()) else "cpu")
-
     data = load_node_features(source_path, target_path)
     msgs, sups = load_bipartite_edges(labels_path, message, supervision)
     edge_label = torch.ones(sups.shape[1], dtype=torch.float)
@@ -175,10 +213,31 @@ def load_graph(
     message: list[str],
     supervision: list[str],
     graph_type: str,
+    pretrain_source=False,
 ) -> HeteroData:
-    DEVICE = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if (os.getenv('GPU_DEVICE') != "cpu" and torch.cuda.is_available()) else "cpu")
-
     data = load_node_features(source_path, target_path)
+
+    if pretrain_source:
+        s_s_msgs, s_s_sups, s_t_msgs, t_t_msgs = load_edges(
+            s_s_labels_path,
+            s_t_labels_path,
+            t_t_labels_path,
+            message,
+            supervision,
+            pretrain_source = pretrain_source
+        )
+        data["target", "similar", "target"].edge_index = t_t_msgs
+        data["source", "similar", "target"].edge_index = s_t_msgs
+
+        edge_label = torch.ones(s_s_sups.shape[1], dtype=torch.float)
+        data["source", "binds", "source"].edge_index = s_s_msgs
+        data["source", "binds", "source"].edge_label_index = s_s_sups
+        data["source", "binds", "source"].edge_label = edge_label
+
+        data = T.ToUndirected()(data).to(DEVICE, non_blocking=True)
+
+        return data
+
 
     if graph_type == "s_expanded":
         msgs, sups, s_s_msgs = load_s_expanded_edges(
@@ -213,24 +272,12 @@ def load_graph(
     return data
 
 
-def load_graph_helper(leave_out: str, tgt_type: str, graph_type: str,
-                      input_root_dir: str, init_feature: str,):
+def load_graph_helper(leave_out: str, tgt_type: str, graph_type: str, pretrain_source: bool):
     """
     Helper function to load the correct graph type based on
     datasplit, target profiles, and edge types. Eventually will take
     this out of hard code.
     """
-
-    if init_feature == "ourfeat":
-        # print("Using our features")
-        src_name = "source_admet"
-        tgt_name = "target_llm"
-    elif init_feature == "cp":
-        # print("Using CP features")
-        src_name = "source"
-        tgt_name = "target"
-    else:
-        raise NotImplementedError("Init feature name not recognized:", init_feature)
 
     training = [["message"], ["train"]]
     validation = [["message", "train"], ["valid"]]
@@ -238,12 +285,9 @@ def load_graph_helper(leave_out: str, tgt_type: str, graph_type: str,
 
     if graph_type == "bipartite":
         paths = [
-            os.path.join(input_root_dir, f"{graph_type}/{tgt_type}/{src_name}.parquet"),
-            os.path.join(input_root_dir, f"{graph_type}/{tgt_type}/{tgt_name}.parquet"),
-            os.path.join(input_root_dir, f"{graph_type}/{tgt_type}/{leave_out}/s_t_labels.parquet"),
-            # f"data/{graph_type}/{tgt_type}/source.parquet",
-            # f"data/{graph_type}/{tgt_type}/target.parquet",
-            # f"data/{graph_type}/{tgt_type}/{leave_out}/s_t_labels.parquet",
+            f"data/{graph_type}/{tgt_type}/source.parquet",
+            f"data/{graph_type}/{tgt_type}/target.parquet",
+            f"data/{graph_type}/{tgt_type}/{leave_out}/s_t_labels.parquet",
         ]
         train_data = load_bipartite_graph(*paths, *training)
         valid_data = load_bipartite_graph(*paths, *validation)
@@ -251,31 +295,30 @@ def load_graph_helper(leave_out: str, tgt_type: str, graph_type: str,
 
     else:
         paths = [
-            os.path.join(input_root_dir, f"{graph_type}/{tgt_type}/{src_name}.parquet"),
-            os.path.join(input_root_dir, f"{graph_type}/{tgt_type}/{tgt_name}.parquet"),
-            # f"data/{graph_type}/{tgt_type}/source.parquet",
-            # f"data/{graph_type}/{tgt_type}/target.parquet",
+            f"data/{graph_type}/{tgt_type}/source.parquet",
+            f"data/{graph_type}/{tgt_type}/target.parquet",
         ] + [
-            os.path.join(input_root_dir, f"{graph_type}/{tgt_type}/{leave_out}/{t}.parquet")
+            f"data/{graph_type}/{tgt_type}/{leave_out}/{t}.parquet"
             for t in ("s_s_labels", "s_t_labels", "t_t_labels")
-            # f"data/{graph_type}/{tgt_type}/{leave_out}/{t}.parquet"
-            # for t in ("s_s_labels", "s_t_labels", "t_t_labels")
         ]
-        train_data = load_graph(*paths, *training, graph_type)
-        valid_data = load_graph(*paths, *validation, graph_type)
-        test_data = load_graph(*paths, *testing, graph_type)
+        train_data = load_graph(*paths, *training, graph_type, pretrain_source)
+        valid_data = load_graph(*paths, *validation, graph_type, pretrain_source)
+        test_data = load_graph(*paths, *testing, graph_type, pretrain_source)
+
+        # print("train_data", train_data)
+        # print("val_data", valid_data)
+        # print("test_data", test_data)
 
     return train_data, valid_data, test_data
 
-def get_loader(
-        data: HeteroData, edges, leave_out, type: str,
-        args = None, gnn_model = None, epoch = None, num_epochs = None,
-    ) -> LinkNeighborLoader:
 
-    edge_label_index = data["source", "binds", "target"].edge_label_index
-    edge_label = data["source", "binds", "target"].edge_label
-
-    DEVICE = torch.device(f"cuda:{os.getenv('GPU_DEVICE')}" if (os.getenv('GPU_DEVICE') != "cpu" and torch.cuda.is_available()) else "cpu")
+def get_loader(data: HeteroData, edges, leave_out, type: str, pretrain_source: bool) -> LinkNeighborLoader:
+    if pretrain_source:
+        edge_label_index = data["source", "binds", "source"].edge_label_index
+        edge_label = data["source", "binds", "source"].edge_label
+    else:
+        edge_label_index = data["source", "binds", "target"].edge_label_index
+        edge_label = data["source", "binds", "target"].edge_label
 
     if type == "train":
         bsz = 512
@@ -285,39 +328,44 @@ def get_loader(
         bsz = 8192
         shuffle = False
         ratio = 10
-
-    data_loader = LinkNeighborLoader(
-        data=data,
-        num_neighbors={key: [-1] * 4 for key in data.edge_types},
-        edge_label_index=(("source", "binds", "target"), edge_label_index),
-        edge_label=edge_label,
-        transform=SampleNegatives(edges, leave_out, ratio, all_data=data,
-                                  gnn_model=gnn_model, epoch=epoch, num_epochs=num_epochs),
-        subgraph_type="bidirectional",
-        batch_size=bsz,
-        shuffle=shuffle,
-        filter_per_worker=True,
-    )
+    
+    if pretrain_source:
+        data_loader = LinkNeighborLoader(
+            data=data,
+            num_neighbors={key: [-1] * 4 for key in data.edge_types},
+            edge_label_index=(("source", "binds", "source"), edge_label_index),
+            edge_label=edge_label,
+            transform=SampleNegatives(edges, leave_out, ratio, pretrain_source),
+            subgraph_type="bidirectional",
+            batch_size=bsz,
+            shuffle=shuffle,
+            filter_per_worker=True,
+        )
+    else:
+        data_loader = LinkNeighborLoader(
+            data=data,
+            num_neighbors={key: [-1] * 4 for key in data.edge_types},
+            edge_label_index=(("source", "binds", "target"), edge_label_index),
+            edge_label=edge_label,
+            transform=SampleNegatives(edges, leave_out, ratio),
+            subgraph_type="bidirectional",
+            batch_size=bsz,
+            shuffle=shuffle,
+            filter_per_worker=True,
+        )
     return PrefetchLoader(loader=data_loader, device=DEVICE)
 
 
 def get_loaders(
-    args, leave_out: str, tgt_type: str, graph_type: str, input_root_dir: str,
-    gnn_model = None, epoch = None, num_epochs = None, train_only = False, init_feature = None,
+    leave_out: str, tgt_type: str, graph_type: str, pretrain_source: bool
 ) -> tuple[LinkNeighborLoader]:
     train_data, valid_data, test_data = load_graph_helper(
-        leave_out, tgt_type, graph_type, input_root_dir, init_feature
+        leave_out, tgt_type, graph_type, pretrain_source
     )
 
     edges = get_all_st_edges(test_data)
-
-    if train_only and gnn_model:
-        train_loader = get_loader(train_data, edges, leave_out, "train", 
-                                  args, gnn_model=gnn_model, epoch=epoch, num_epochs=num_epochs)
-        return train_loader
-    
-    train_loader = get_loader(train_data, edges, leave_out, "train")
-    valid_loader = get_loader(valid_data, edges, leave_out, "valid")
-    test_loader = get_loader(test_data, edges, leave_out, "test")
+    train_loader = get_loader(train_data, edges, leave_out, "train", pretrain_source)
+    valid_loader = get_loader(valid_data, edges, leave_out, "valid", pretrain_source)
+    test_loader = get_loader(test_data, edges, leave_out, "test", pretrain_source)
 
     return train_loader, valid_loader, test_loader
