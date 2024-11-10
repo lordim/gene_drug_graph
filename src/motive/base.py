@@ -17,9 +17,14 @@ def get_counts(data: HeteroData) -> tuple[int, int, dict]:
     return num_sources, num_targets, num_features
 
 
-def get_all_st_edges(data: HeteroData) -> np.ndarray:
-    msgs = data["binds"]["edge_index"]
-    sups = data["binds"]["edge_label_index"]
+def get_all_st_edges(data: HeteroData, pretrain_source: bool) -> np.ndarray:
+    if pretrain_source:
+        msgs = data["source", "similar", "source"]["edge_index"]
+        sups = data["source", "similar", "source"]["edge_label_index"]
+    
+    else:
+        msgs = data["binds"]["edge_index"]
+        sups = data["binds"]["edge_label_index"]
     edges = torch.concat([msgs, sups], axis=1).cpu().numpy()
     return edges
 
@@ -227,12 +232,12 @@ def load_graph(
             pretrain_source = pretrain_source
         )
         data["target", "similar", "target"].edge_index = t_t_msgs
-        data["source", "similar", "target"].edge_index = s_t_msgs
+        data["source", "binds", "target"].edge_index = s_t_msgs
 
         edge_label = torch.ones(s_s_sups.shape[1], dtype=torch.float)
-        data["source", "binds", "source"].edge_index = s_s_msgs
-        data["source", "binds", "source"].edge_label_index = s_s_sups
-        data["source", "binds", "source"].edge_label = edge_label
+        data["source", "similar", "source"].edge_index = s_s_msgs
+        data["source", "similar", "source"].edge_label_index = s_s_sups
+        data["source", "similar", "source"].edge_label = edge_label
 
         data = T.ToUndirected()(data).to(DEVICE, non_blocking=True)
 
@@ -314,8 +319,8 @@ def load_graph_helper(leave_out: str, tgt_type: str, graph_type: str, pretrain_s
 
 def get_loader(data: HeteroData, edges, leave_out, type: str, pretrain_source: bool) -> LinkNeighborLoader:
     if pretrain_source:
-        edge_label_index = data["source", "binds", "source"].edge_label_index
-        edge_label = data["source", "binds", "source"].edge_label
+        edge_label_index = data["source", "similar", "source"].edge_label_index
+        edge_label = data["source", "similar", "source"].edge_label
     else:
         edge_label_index = data["source", "binds", "target"].edge_label_index
         edge_label = data["source", "binds", "target"].edge_label
@@ -333,7 +338,7 @@ def get_loader(data: HeteroData, edges, leave_out, type: str, pretrain_source: b
         data_loader = LinkNeighborLoader(
             data=data,
             num_neighbors={key: [-1] * 4 for key in data.edge_types},
-            edge_label_index=(("source", "binds", "source"), edge_label_index),
+            edge_label_index=(("source", "similar", "source"), edge_label_index),
             edge_label=edge_label,
             transform=SampleNegatives(edges, leave_out, ratio, pretrain_source),
             subgraph_type="bidirectional",
@@ -363,7 +368,7 @@ def get_loaders(
         leave_out, tgt_type, graph_type, pretrain_source
     )
 
-    edges = get_all_st_edges(test_data)
+    edges = get_all_st_edges(test_data, pretrain_source=pretrain_source)
     train_loader = get_loader(train_data, edges, leave_out, "train", pretrain_source)
     valid_loader = get_loader(valid_data, edges, leave_out, "valid", pretrain_source)
     test_loader = get_loader(test_data, edges, leave_out, "test", pretrain_source)

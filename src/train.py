@@ -10,12 +10,15 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 SEED = 2024313
 
 
-def run_update(model, optimizer, data):
+def run_update(model, optimizer, data, pretrain_source = False):
     if optimizer:  # with Cosine model, optimizer is None
         optimizer.zero_grad()
     data.to(DEVICE)
     logits = model(data)
-    y_true = data["binds"].edge_label
+    if pretrain_source:
+        y_true = data["source", "similar", "source"].edge_label
+    else:
+        y_true = data["binds"].edge_label
     loss = F.binary_cross_entropy_with_logits(logits, y_true)
     if optimizer:  # with Cosine model, optimizer is None
         loss.backward()
@@ -23,19 +26,22 @@ def run_update(model, optimizer, data):
     return logits, y_true
 
 
-def run_train_epoch(model, loader, optimizer):
+def run_train_epoch(model, loader, optimizer, pretrain_source = False):
     model.train()
     edges, outs = [], []
     for batch in loader:
-        outs.append(run_update(model, optimizer, batch))
-        edges.append(batch["binds"].edge_label_index)
+        outs.append(run_update(model, optimizer, batch, pretrain_source=pretrain_source))
+        if pretrain_source:
+            edges.append(batch["source", "similar", "source"].edge_label_index)
+        else:
+            edges.append(batch["binds"].edge_label_index)
     logits, y_true = map(torch.cat, zip(*outs))
     edges = torch.cat(edges, dim=1)
     return logits, y_true, edges
 
 
 @torch.inference_mode
-def run_inference_epoch(model, loader):
+def run_inference_epoch(model, loader, pretrain_source = False):
     logits = []
     y_true = []
     edges = []
@@ -43,8 +49,12 @@ def run_inference_epoch(model, loader):
     for batch in loader:
         batch.to(DEVICE)
         logits.append(model(batch))
-        y_true.append(batch["binds"].edge_label)
-        edges.append(batch["binds"].edge_label_index)
+        if pretrain_source:
+            y_true.append(batch["source", "similar", "source"].edge_label)
+            edges.append(batch["source", "similar", "source"].edge_label_index)
+        else:
+            y_true.append(batch["binds"].edge_label)
+            edges.append(batch["binds"].edge_label_index)
     logits = torch.cat(logits, dim=0)
     y_true = torch.cat(y_true, dim=0)
     edges = torch.cat(edges, dim=1)
@@ -52,7 +62,7 @@ def run_inference_epoch(model, loader):
 
 
 @torch.inference_mode
-def run_test(model, test_loader, th):
+def run_test(model, test_loader, th, pretrain_source = False):
     logits = []
     y_true = []
     src_ids = []
@@ -61,11 +71,20 @@ def run_test(model, test_loader, th):
     for batch in test_loader:
         batch.to(DEVICE)
         logits.append(model(batch))
-        y_true.append(batch["binds"].edge_label)
 
-        # sampled batch source and target ids of each edge in test set
-        test_srcs = batch["binds"].edge_label_index[0]
-        test_tgts = batch["binds"].edge_label_index[1]
+        if pretrain_source:
+            y_true.append(batch["source", "similar", "source"].edge_label)
+
+            # sampled batch source and target ids of each edge in test set
+            test_srcs = batch["source", "similar", "source"].edge_label_index[0]
+            test_tgts = batch["source", "similar", "source"].edge_label_index[1]
+
+        else:
+            y_true.append(batch["binds"].edge_label)
+
+            # sampled batch source and target ids of each edge in test set
+            test_srcs = batch["binds"].edge_label_index[0]
+            test_tgts = batch["binds"].edge_label_index[1]
 
         # global source and target ids of each edge in test set
         src_ids.append(batch["source"].node_id[test_srcs])
@@ -111,6 +130,7 @@ def train_loop(
     val_loader,
     num_epochs,
     log_gradients=False,
+    pretrain_source = False
 ):
     torch.manual_seed(SEED)
     model_params = list(model.parameters())
@@ -128,7 +148,7 @@ def train_loop(
     best_metric = float("-inf")
     criteria = "Hits@500"
     for epoch in tqdm(range(1, num_epochs + 1)):
-        logits, y_true, edges = run_train_epoch(model, train_loader, optimizer)
+        logits, y_true, edges = run_train_epoch(model, train_loader, optimizer, pretrain_source = pretrain_source)
         with torch.inference_mode():
             best_th = get_best_th(logits, y_true)
             metrics = ev.evaluate(logits, y_true, best_th, edges)
@@ -136,7 +156,7 @@ def train_loop(
                 writer.add_scalar("train/" + metric, score, epoch)
             writer.flush()
 
-            logits, y_true, edges = run_inference_epoch(model, val_loader)
+            logits, y_true, edges = run_inference_epoch(model, val_loader, pretrain_source=pretrain_source)
             metrics = ev.evaluate(logits, y_true, best_th, edges)
             for metric, score in metrics.items():
                 writer.add_scalar("valid/" + metric, score, epoch)

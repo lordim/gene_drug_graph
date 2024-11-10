@@ -118,7 +118,7 @@ class GraphSAGE_Embs(torch.nn.Module):
             pred = self.classifier(
                 x_dict["source"],
                 x_dict["target"],
-                data["source", "binds", "source"].edge_label_index,
+                data["source", "similar", "source"].edge_label_index,
             )
         else:
             pred = self.classifier(

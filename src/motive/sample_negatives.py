@@ -54,14 +54,23 @@ def negative_sampling(source_ix, target_ix, pos_edges, size, pretrain_source=Fal
     return samples
 
 
-def select_nodes_to_sample(data, split):
+def select_nodes_to_sample(data, split, pretrain_source: bool):
     """Select nodes to build negative samples based on the split"""
-    source_ix = data["binds"].edge_label_index[0]
-    target_ix = data["binds"].edge_label_index[1]
-    if split != "source":
-        source_ix = torch.cat((source_ix, data["binds"].edge_index[0]))
-    if split != "target":
-        target_ix = torch.cat((target_ix, data["binds"].edge_index[1]))
+    
+    if pretrain_source:
+        source_ix = data["source", "similar", "source"].edge_label_index[0]
+        target_ix = data["source", "similar", "source"].edge_label_index[1]
+        if split != "source":
+            source_ix = torch.cat((source_ix, data["source", "similar", "source"].edge_index[0]))
+        if split != "target":
+            target_ix = torch.cat((target_ix, data["source", "similar", "source"].edge_index[1]))
+    else:
+        source_ix = data["binds"].edge_label_index[0]
+        target_ix = data["binds"].edge_label_index[1]
+        if split != "source":
+            source_ix = torch.cat((source_ix, data["binds"].edge_index[0]))
+        if split != "target":
+            target_ix = torch.cat((target_ix, data["binds"].edge_index[1]))
     return source_ix.unique(), target_ix.unique()
 
 
@@ -75,9 +84,12 @@ class SampleNegatives(BaseTransform):
     def forward(self, data: HeteroData):
         data = data.to(DEVICE, non_blocking=True)
 
-        num_pos = len(data["binds"].edge_label)
+        if self.pretrain_source:
+            num_pos = len(data["source", "similar", "source"].edge_label)
+        else:
+            num_pos = len(data["binds"].edge_label)
         # Select nodes
-        subgraph_src, subgraph_tgt = select_nodes_to_sample(data, self.split)
+        subgraph_src, subgraph_tgt = select_nodes_to_sample(data, self.split, self.pretrain_source)
 
         # map local (subgraph) edge indices to global indices
         global_src = data["source"].node_id[subgraph_src]
@@ -95,13 +107,23 @@ class SampleNegatives(BaseTransform):
 
         # concat current and new edges and labels
         neg_edges = torch.stack([neg_src, neg_tgt])
-        new_edges = torch.cat((data["binds"].edge_label_index, neg_edges), axis=1)
+        if self.pretrain_source:
+            new_edges = torch.cat((data["source", "similar", "source"].edge_label_index, neg_edges), axis=1)
+        else:
+            new_edges = torch.cat((data["binds"].edge_label_index, neg_edges), axis=1)
 
         neg_label = torch.zeros(len(neg_src), device=DEVICE)
-        new_label = torch.cat((data["binds"].edge_label, neg_label))
+        if self.pretrain_source:
+            new_label = torch.cat((data["source", "similar", "source"].edge_label, neg_label))
+        else:
+            new_label = torch.cat((data["binds"].edge_label, neg_label))
 
         # update data object
-        data["binds"].edge_label = new_label
-        data["binds"].edge_label_index = new_edges.contiguous()
+        if self.pretrain_source:
+            data["source", "similar", "source"].edge_label = new_label
+            data["source", "similar", "source"].edge_label_index = new_edges.contiguous()
+        else:
+            data["binds"].edge_label = new_label
+            data["binds"].edge_label_index = new_edges.contiguous()
 
         return data
