@@ -82,12 +82,13 @@ def main():
         print(f"{locator.test_results_path} exists. Skipping...")
         return
     
-    # if args.use_wandb:
-    wandb_output_dir = os.path.join(args.wandb_output_dir, args.wandb_runid)
-    if not os.path.exists(wandb_output_dir):
-        os.makedirs(wandb_output_dir)
 
     if args.use_wandb:
+    
+        wandb_output_dir = os.path.join(args.wandb_output_dir, args.wandb_runid)
+        if not os.path.exists(wandb_output_dir):
+            os.makedirs(wandb_output_dir)
+    
         wandb.init(
             project=args.wandb_project,
             entity=args.wandb_entity,

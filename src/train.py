@@ -4,6 +4,7 @@ import os
 import torch.nn.functional as F
 from torch.utils.tensorboard.writer import SummaryWriter
 from tqdm.autonotebook import tqdm
+import wandb
 
 from utils.evaluate import Evaluator, get_best_th, save_metrics
 
@@ -164,12 +165,20 @@ def train_loop(
             metrics = ev.evaluate(logits, y_true, best_th, edges)
             for metric, score in metrics.items():
                 writer.add_scalar("train/" + metric, score, epoch)
+
+                if args.use_wandb:
+                    wandb.log({f"train/{metric}": score}, step=epoch)
+
             writer.flush()
 
             logits, y_true, edges = run_inference_epoch(model, val_loader)
             metrics = ev.evaluate(logits, y_true, best_th, edges)
             for metric, score in metrics.items():
                 writer.add_scalar("valid/" + metric, score, epoch)
+
+                if args.use_wandb:
+                    wandb.log({f"valid/{metric}": score}, step=epoch)
+
             writer.flush()
 
             if metrics[criteria] > best_metric:
