@@ -55,7 +55,7 @@ def main():
     parser.add_argument("--num_epochs", dest="num_epochs", type=int, default=500)
     parser.add_argument("--gpu_device", type=str, dest="gpu_device", help="GPU device to use")
 
-    # WANDB ARGS (CURRENTLY DEPRECATED):
+    # WANDB ARGS:
     parser.add_argument("--wandb_project", dest="wandb_project", default="gene_drug_graph")
     parser.add_argument("--wandb_entity", dest="wandb_entity", default="lordim")
     parser.add_argument("--wandb_group", dest="wandb_group", default="test")
