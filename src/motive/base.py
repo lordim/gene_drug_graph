@@ -157,11 +157,18 @@ def load_edges(
             t_t_msgs = t_t_edges.query("subset.isin(@supervision)")
         else:
             t_t_msgs = t_t_edges.query("subset.isin(@message)")
-        s_t_msgs = s_t_edges.query("subset.isin(@message)")
-        
         t_t_msgs = torch.tensor(
             t_t_msgs[["target_a", "target_b"]].values.T, dtype=torch.long
         )
+
+        if message == ["message"] or message == ["message", "train"]:
+            s_t_type = ["message", "train", "valid"]
+            s_t_msgs = s_t_edges.query("subset.isin(@s_t_type)")
+
+        else:
+            s_t_type = ["message", "train", "valid", "test"]
+            s_t_msgs = s_t_edges.query("subset.isin(@s_t_type)")
+        
         s_t_msgs = torch.tensor(s_t_msgs[["source", "target"]].values.T, dtype=torch.long)
 
         return s_s_msgs, s_s_sup, s_t_msgs, t_t_msgs 
