@@ -1,7 +1,7 @@
-# gene_drug_graph
-Graph Neural Network for Predicting Drug-Gene Interactions
+# Improving Drug-Gene Interaction Prediction with Learned Biomolecular Features
 
-% test
+![plot](drug_gene_inter.jpeg)
+image source: [link](https://www.nature.com/articles/srep04176/figures/2)
 
 ### This repository is built upon the codebase from the following repository:
 https://github.com/carpenter-singh-lab/motive
