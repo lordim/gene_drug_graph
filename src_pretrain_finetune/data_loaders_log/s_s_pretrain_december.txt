@@ -1,0 +1,58 @@
+train_data HeteroData(
+  source={
+    node_id=[3632],
+    x=[3632, 737],
+  },
+  target={
+    node_id=[11509],
+    x=[11509, 722],
+  },
+  (target, similar, target)={ edge_index=[2, 406056] },         # ["message"], ["train"]
+  (source, binds, target)={ edge_index=[2, 17265] },            # ["message", "train"]
+  (source, similar, source)={
+    edge_index=[2, 70774],            # ["train"[70%]] doubled number because edge is undirected. 
+    edge_label_index=[2, 15166],      # ["train"[30%]] not doubled because these are supervision edges
+    edge_label=[15166],
+  },
+  (target, rev_binds, source)={ edge_index=[2, 17265] }
+)
+
+
+val_data HeteroData(
+  source={
+    node_id=[3632],
+    x=[3632, 737],
+  },
+  target={
+    node_id=[11509],
+    x=[11509, 722],
+  },
+  (target, similar, target)={ edge_index=[2, 406056] },     # ["message"], ["train"]    
+  (source, binds, target)={ edge_index=[2, 17265] },        # ["message"], ["train"]
+  (source, similar, source)={
+    edge_index=[2, 101106],                 # ["message", "train"]
+    edge_label_index=[2, 7895],             # ["valid"]
+    edge_label=[7895],
+  },
+  (target, rev_binds, source)={ edge_index=[2, 17265] }
+)
+
+
+test_data HeteroData(
+  source={
+    node_id=[3632],
+    x=[3632, 737],
+  },
+  target={
+    node_id=[11509],
+    x=[11509, 722],
+  },
+  (target, similar, target)={ edge_index=[2, 406056] },         # ["message", "train", "valid"]
+  (source, binds, target)={ edge_index=[2, 19957] },                # ["message", "train", "valid"]
+  (source, similar, source)={
+    edge_index=[2, 116896],              # ["message", "train", "valid"]
+    edge_label_index=[2, 16882],            # ["test"]
+    edge_label=[16882],
+  },
+  (target, rev_binds, source)={ edge_index=[2, 19957] }
+)
