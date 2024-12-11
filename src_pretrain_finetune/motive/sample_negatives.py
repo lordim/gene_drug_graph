@@ -17,7 +17,7 @@ def find_indices(reference, query):
     return torch.max(reference[:, None] == query[None, :], axis=0).indices
 
 
-def negative_sampling(source_ix, target_ix, pos_edges, size, pretrain_source=False):
+def negative_sampling(source_ix, target_ix, pos_edges, size, pretrain_source=False, pretrain_target=False):
     """
     Negative sampling using GPU and batched impl.
     Create source_ix[i], target_ix[j] pairs that are not present in pos_edges.
@@ -30,14 +30,15 @@ def negative_sampling(source_ix, target_ix, pos_edges, size, pretrain_source=Fal
     samples = torch.stack([neg_source_ix, neg_target_ix]).T
     samples = torch.unique(samples, dim=0)
 
-    if pretrain_source:
+    if pretrain_source or pretrain_target:
         # Cannot fit all pos_edges on GPU, so split into 4 splits. 
         pos_edges_len = pos_edges.shape[1]  
         split = pos_edges_len // 4
-        pos_edges_set_1 = pos_edges[:, :split] 
-        pos_edges_set_2 = pos_edges[:, split: 2*split]
-        pos_edges_set_3 = pos_edges[:, 2*split: split*3]
-        pos_edges_set_4 = pos_edges[:, 3*split:]
+        step = 4 if pretrain_target else 1
+        pos_edges_set_1 = pos_edges[:, :split:step] 
+        pos_edges_set_2 = pos_edges[:, split: 2*split: step]
+        pos_edges_set_3 = pos_edges[:, 2*split: split*3 : step]
+        pos_edges_set_4 = pos_edges[:, 3*split::step]
         y_true = torch.any(torch.all(samples[:, None] == pos_edges_set_1.T, axis=2), axis=1)
         samples = samples[~y_true]
         y_true = torch.any(torch.all(samples[:, None] == pos_edges_set_2.T, axis=2), axis=1)
@@ -54,7 +55,7 @@ def negative_sampling(source_ix, target_ix, pos_edges, size, pretrain_source=Fal
     return samples
 
 
-def select_nodes_to_sample(data, split, pretrain_source: bool):
+def select_nodes_to_sample(data, split, pretrain_source: bool, pretrain_target: bool):
     """Select nodes to build negative samples based on the split"""
     
     if pretrain_source:
@@ -64,6 +65,13 @@ def select_nodes_to_sample(data, split, pretrain_source: bool):
             source_ix = torch.cat((source_ix, data["source", "similar", "source"].edge_index[0]))
         if split != "target":
             target_ix = torch.cat((target_ix, data["source", "similar", "source"].edge_index[1]))
+    elif pretrain_target:
+        source_ix = data["target", "similar", "target"].edge_label_index[0]
+        target_ix = data["target", "similar", "target"].edge_label_index[1]
+        if split != "source":
+            source_ix = torch.cat((source_ix, data["target", "similar", "target"].edge_index[0]))
+        if split != "target":
+            target_ix = torch.cat((target_ix, data["target", "similar", "target"].edge_index[1]))
     else:
         source_ix = data["binds"].edge_label_index[0]
         target_ix = data["binds"].edge_label_index[1]
@@ -75,46 +83,76 @@ def select_nodes_to_sample(data, split, pretrain_source: bool):
 
 
 class SampleNegatives(BaseTransform):
-    def __init__(self, edges, split, ratio, pretrain_source=False):
+    def __init__(self, edges, split, ratio, pretrain_source=False, pretrain_target=False):
         self.edges = torch.tensor(edges, device=DEVICE)
         self.split = split
         self.ratio = ratio
         self.pretrain_source = pretrain_source
+        self.pretrain_target = pretrain_target
 
     def forward(self, data: HeteroData):
         data = data.to(DEVICE, non_blocking=True)
 
         if self.pretrain_source:
+          
             num_pos = len(data["source", "similar", "source"].edge_label)
+            # Select nodes
+            subgraph_src, subgraph_tgt = select_nodes_to_sample(data, self.split, self.pretrain_source, self.pretrain_target)
+
+            # map local (subgraph) edge indices to global indices
+            global_src = data["source"].node_id[subgraph_src]
+            global_tgt = data["source"].node_id[subgraph_tgt]
+        elif self.pretrain_target:
+            num_pos = len(data["target", "similar", "target"].edge_label)
+            # Select nodes
+            subgraph_src, subgraph_tgt = select_nodes_to_sample(data, self.split, self.pretrain_source, self.pretrain_target)
+
+            # map local (subgraph) edge indices to global indices
+            global_src = data["target"].node_id[subgraph_src]
+            global_tgt = data["target"].node_id[subgraph_tgt]
         else:
             num_pos = len(data["binds"].edge_label)
-        # Select nodes
-        subgraph_src, subgraph_tgt = select_nodes_to_sample(data, self.split, self.pretrain_source)
+            # Select nodes
+            subgraph_src, subgraph_tgt = select_nodes_to_sample(data, self.split, self.pretrain_source, self.pretrain_target)
 
-        # map local (subgraph) edge indices to global indices
-        global_src = data["source"].node_id[subgraph_src]
-        global_tgt = data["target"].node_id[subgraph_tgt]
+            # map local (subgraph) edge indices to global indices
+            global_src = data["source"].node_id[subgraph_src]
+            global_tgt = data["target"].node_id[subgraph_tgt]
 
         size = num_pos * self.ratio
-        if self.pretrain_source:
-            neg_edges = negative_sampling(global_src, global_src, self.edges, size, pretrain_source=self.pretrain_source)
-        else:
-            neg_edges = negative_sampling(global_src, global_tgt, self.edges, size)
+        neg_edges = negative_sampling(global_src, global_tgt, self.edges, size, pretrain_source=self.pretrain_source, pretrain_target=self.pretrain_target)
 
-        # map global edge indices to local (subgraph) indices
-        neg_src = find_indices(data["source"].node_id, neg_edges[0])
-        neg_tgt = find_indices(data["target"].node_id, neg_edges[1])
-
-        # concat current and new edges and labels
-        neg_edges = torch.stack([neg_src, neg_tgt])
         if self.pretrain_source:
+            # map global edge indices to local (subgraph) indices
+            neg_src = find_indices(data["source"].node_id, neg_edges[0])
+            neg_tgt = find_indices(data["source"].node_id, neg_edges[1])
+
+            # concat current and new edges and labels
+            neg_edges = torch.stack([neg_src, neg_tgt])
             new_edges = torch.cat((data["source", "similar", "source"].edge_label_index, neg_edges), axis=1)
+        elif self.pretrain_target:
+            # map global edge indices to local (subgraph) indices
+            neg_src = find_indices(data["target"].node_id, neg_edges[0])
+            neg_tgt = find_indices(data["target"].node_id, neg_edges[1])
+
+            # concat current and new edges and labels
+            neg_edges = torch.stack([neg_src, neg_tgt])
+            new_edges = torch.cat((data["target", "similar", "target"].edge_label_index, neg_edges), axis=1)
+        
         else:
+            # map global edge indices to local (subgraph) indices
+            neg_src = find_indices(data["source"].node_id, neg_edges[0])
+            neg_tgt = find_indices(data["target"].node_id, neg_edges[1])
+
+            # concat current and new edges and labels
+            neg_edges = torch.stack([neg_src, neg_tgt])
             new_edges = torch.cat((data["binds"].edge_label_index, neg_edges), axis=1)
 
         neg_label = torch.zeros(len(neg_src), device=DEVICE)
         if self.pretrain_source:
             new_label = torch.cat((data["source", "similar", "source"].edge_label, neg_label))
+        elif self.pretrain_target:
+            new_label = torch.cat((data["target", "similar", "target"].edge_label, neg_label))
         else:
             new_label = torch.cat((data["binds"].edge_label, neg_label))
 
@@ -122,6 +160,9 @@ class SampleNegatives(BaseTransform):
         if self.pretrain_source:
             data["source", "similar", "source"].edge_label = new_label
             data["source", "similar", "source"].edge_label_index = new_edges.contiguous()
+        elif self.pretrain_target:
+            data["target", "similar", "target"].edge_label = new_label
+            data["target", "similar", "target"].edge_label_index = new_edges.contiguous()
         else:
             data["binds"].edge_label = new_label
             data["binds"].edge_label_index = new_edges.contiguous()

@@ -84,7 +84,7 @@ class Classifier(torch.nn.Module):
 
 class GraphSAGE_Embs(torch.nn.Module):
     def __init__(
-        self, hidden_channels, num_source_nodes, num_target_nodes, data, GNNClass, pretrain_source
+        self, hidden_channels, num_source_nodes, num_target_nodes, data, GNNClass, pretrain_source, pretrain_target
     ):
         super().__init__()
 
@@ -103,6 +103,7 @@ class GraphSAGE_Embs(torch.nn.Module):
         self.classifier = Classifier()
 
         self.pretrain_source = pretrain_source
+        self.pretrain_target = pretrain_target
 
     def forward(self, data: HeteroData) -> Tensor:
         x_dict = {
@@ -117,8 +118,14 @@ class GraphSAGE_Embs(torch.nn.Module):
         if self.pretrain_source:
             pred = self.classifier(
                 x_dict["source"],
-                x_dict["target"],
+                x_dict["source"],
                 data["source", "similar", "source"].edge_label_index,
+            )
+        elif self.pretrain_target:
+            pred = self.classifier(
+                x_dict["target"],
+                x_dict["target"],
+                data["target", "similar", "target"].edge_label_index,
             )
         else:
             pred = self.classifier(
@@ -133,10 +140,10 @@ class GraphSAGE_Embs(torch.nn.Module):
 # cp features but freezes embeddings throughout training
 class GraphSAGE_CP(GraphSAGE_Embs):
     def __init__(
-        self, hidden_channels, num_source_nodes, num_target_nodes, data, GNNClass, pretrain_source
+        self, hidden_channels, num_source_nodes, num_target_nodes, data, GNNClass, pretrain_source, pretrain_target
     ):
         super().__init__(
-            hidden_channels, num_source_nodes, num_target_nodes, data, GNNClass, pretrain_source
+            hidden_channels, num_source_nodes, num_target_nodes, data, GNNClass, pretrain_source, pretrain_target
         )
         src_weights = data["source"].x
         tgt_weights = data["target"].x
@@ -208,7 +215,7 @@ class Cosine(torch.nn.Module):
         return logits
 
 
-def create_model(locator: PathLocator, data, pretrain_source: bool):
+def create_model(locator: PathLocator, data, pretrain_source: bool, pretrain_target: bool):
     model_name = locator.config["model_name"]
     num_sources, num_targets, num_features = get_counts(data)
 
@@ -222,7 +229,8 @@ def create_model(locator: PathLocator, data, pretrain_source: bool):
                 num_targets,
                 data,
                 GNNClass,
-                pretrain_source
+                pretrain_source, 
+                pretrain_target
             )
         elif initialization == "embs":
             model = GraphSAGE_Embs(
